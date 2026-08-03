@@ -85,6 +85,7 @@ pub trait ExIterator {
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
+    #[verifier::non_extendible_spec]
     fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>)
         where
             Self: Sized,
@@ -94,6 +95,7 @@ pub trait ExIterator {
             r == into_zip_spec(self, other) && zip_post(self, other, r),
     ;
 
+    #[verifier::non_extendible_spec]
     fn collect<B>(self) -> (collection: B)
         where
             B: FromIterator<Self::Item>,
