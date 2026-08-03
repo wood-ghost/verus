@@ -263,6 +263,7 @@ fn handle_autospec<'tcx>(
                     tracked_swap: false,
                     tracked_take_option: false,
                     is_async: false,
+                    is_non_extendible_spec: false,
                 }),
                 body: Some(ret_clause.clone()),
                 extra_dependencies: functionx.extra_dependencies.clone(),
@@ -1417,6 +1418,7 @@ fn make_attributes<'tcx>(
         tracked_swap: vattrs.tracked_swap,
         tracked_take_option: vattrs.tracked_take_option,
         is_async: is_async,
+        is_non_extendible_spec: vattrs.non_extendible_spec,
     };
     Ok(Arc::new(fattrs))
 }

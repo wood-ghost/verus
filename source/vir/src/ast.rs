@@ -1555,7 +1555,7 @@ pub struct FunctionAttrsX {
     /// Whether the function is an async function
     pub is_async: bool,
     // Whether the trait method is non-extendible
-    pub non_extendible_spec: bool,
+    pub is_non_extendible_spec: bool,
 }
 
 /// Function specification of its invariant mask
