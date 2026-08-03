@@ -1959,6 +1959,15 @@ pub fn check_crate(
         {
             return Err(error(&function.span, "default_ensures not allowed here")).map_err(to_wf);
         }
+        if function.x.attrs.is_non_extendible_spec
+            && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
+        {
+            return Err(error(
+                &function.span,
+                "non_extendible_spec is only allowed on trait methods declaration",
+            ))
+            .map_err(to_wf);
+        }
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             if function.x.body.is_some() {
                 if function.x.decrease.len() > 0 {

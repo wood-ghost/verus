@@ -491,13 +491,9 @@ pub(crate) fn expand_call_graph(
     visitor.visit_function(function).unwrap();
 
     // Add T --> f if T declares method f
-    if let FunctionKind::TraitMethodDecl { trait_path, has_default } = &function.x.kind {
-        let nonextensible_default_contract = *has_default
-            && (function.x.mode == crate::ast::Mode::Exec)
-            && function.x.require.is_empty()
-            && function.x.ensure.0.is_empty();
-        // T --> f
-        if !nonextensible_default_contract {
+    if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
+        if !function.x.attrs.is_non_extendible_spec {
+            // T --> f
             call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
         }
         // T --> ...typs...
