@@ -441,6 +441,10 @@ pub broadcast axiom fn zip_postcondition<I: Iterator + IteratorSpec, J: Iterator
 ensures
     {
         let r = #[trigger] into_zip_spec(left, right);
+        let left_remaining = <I as IteratorSpec>::remaining(&left);
+        let right_remaining = <J as IteratorSpec>::remaining(&right);
+        let zipped_remaining = <Zip<I, J> as IteratorSpec>::remaining(&r);
+
         &&& <Zip<I, J> as IteratorSpec>::obeys_prophetic_iter_laws(&r)
         &&& <Zip<I, J> as IteratorSpec>::initial_value_relation(&r, &r)
         &&& <Zip<I, J> as IteratorSpec>::remaining(&r) ==
@@ -450,6 +454,8 @@ ensures
         &&& (<Zip<I, J> as IteratorSpec>::decrease(&r) is Some ==
             (<I as IteratorSpec>::decrease(&left) is Some && <J as IteratorSpec>::decrease(&right) is Some)
         )
+        &&& forall |i: int| 0 <= i < zipped_remaining.len() ==>
+                #[trigger] zipped_remaining[i] == (left_remaining[i], right_remaining[i])
     },
 ;
 

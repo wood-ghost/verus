@@ -1958,10 +1958,11 @@ test_verify_one_file! {
             for pair in iter: left.iter().zip(right.iter())
                 invariant
                     result.len() == iter.index(),
-                    forall |i|
-                        0 <= i < result.len()
-                        ==> result[i]
-                            == (*iter.seq()[i].0, *iter.seq()[i].1),
+                    forall |i: int| 0 <= i < iter.seq().len() ==>
+                        *iter.seq()[i].0 == left@[i]
+                        && *iter.seq()[i].1 == right@[i],
+                    forall |i: int| 0 <= i < result.len() ==>
+                        result[i] == (left@[i], right@[i]),
             {
                 result.push((*pair.0, *pair.1));
             }
