@@ -1554,6 +1554,8 @@ pub struct FunctionAttrsX {
     pub tracked_take_option: bool,
     /// Whether the function is an async function
     pub is_async: bool,
+    // Whether the trait method is non-extendible
+    pub non_extendible_spec: bool,
 }
 
 /// Function specification of its invariant mask
