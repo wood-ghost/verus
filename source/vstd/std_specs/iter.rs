@@ -457,7 +457,7 @@ ensures
             (<I as IteratorSpec>::decrease(&left) is Some && <J as IteratorSpec>::decrease(&right) is Some)
         )
         &&& forall |i: int| 0 <= i < zipped_remaining.len() ==>
-                #[trigger] zipped_remaining[i] == (left_remaining[i], right_remaining[i])
+                zipped_remaining[i] == (#[trigger] left_remaining[i], right_remaining[i])
     },
 ;
 
