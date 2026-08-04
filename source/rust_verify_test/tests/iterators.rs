@@ -122,6 +122,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test]
+    position_works verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(v: Vec<u32>) {
+            let v_result = v.into_iter().position(
+                |i| -> (ret: bool)
+                ensures ret == (i < 10),
+                {i < 10},
+            );
+            if let Some(index) = v_result {
+                assert(index < v.len());
+                assert(v@.contains(v[index as int]));
+                assert(v[index as int] < 10);
+                assert(forall |i: int| 0 <= i < index as int ==> v[i] >= 10);
+            } else {
+                assert(forall |i: int| 0 <= i < v.len() ==> v[i] >= 10);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] all_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
