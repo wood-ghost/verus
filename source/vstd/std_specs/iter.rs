@@ -132,6 +132,7 @@ pub trait ExIterator {
                 let index = r.unwrap();
                 {
                     &&& index as int == (old(self).remaining().len() - final(self).remaining().len() - 1)
+                    &&& (index as int) < old(self).remaining().len()
                     &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
                     &&& predicate.ensures((#[trigger] old(self).remaining()[index as int],), true)
                     &&& forall |i| 0 <= i < index as int ==>

@@ -513,3 +513,77 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test]
+    position_and_then_bound verus_code! {
+        use vstd::prelude::*;
+        use vstd::seq::group_seq_lemmas;
+        use vstd::std_specs::slice::group_slice_axioms;
+
+        fn test(
+            data: &[u8],
+            end: usize,
+        ) -> Option<usize>
+            requires
+                end <= data.len(),
+        {
+            broadcast use group_seq_lemmas;
+            broadcast use group_slice_axioms;
+
+            data[..end]
+                .iter()
+                .position(
+                    |x: &u8| -> (r: bool)
+                        ensures r == (*x != 0),
+                    {
+                        *x != 0
+                    },
+                )
+                .and_then(
+                    |start: usize| -> (r: Option<usize>)
+                        requires
+                            (start as int) < end as int,
+                    {
+                        assert(start < end);
+                        Some(start)
+                    },
+                )
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    position_bound_on_slice_iter verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(data: &[u8], end: usize)
+            requires
+                end <= data.len(),
+        {
+            broadcast use vstd::std_specs::slice::group_slice_axioms;
+            broadcast use vstd::seq::group_seq_lemmas;
+
+            let prefix = &data[..end];
+            assert(prefix.len() == end);
+
+            let mut iter = prefix.iter();
+            assert(iter.obeys_prophetic_iter_laws());
+            assert(iter.remaining().len() == end);
+
+            let result = iter.position(
+                |x: &u8| -> (r: bool)
+                    ensures r == (*x != 0),
+                {
+                    *x != 0
+                },
+            );
+
+            if let Some(start) = result {
+                assert(start < end);
+            }
+        }
+    } => Ok(())
+}
