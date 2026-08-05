@@ -84,7 +84,7 @@ pub trait ExIterator {
             Self: Sized,
             U: IntoIterator,
         default_ensures
-            self.obeys_prophetic_iter_laws() && self.initial_value_relation(&self) ==>
+            self.obeys_prophetic_iter_laws() ==>
             r == into_zip_spec(self, other) && zip_post(self, other, r),
     ;
 
@@ -454,8 +454,8 @@ pub broadcast axiom fn zip_postcondition<I: Iterator + IteratorSpec, J: Iterator
     requires
         <I as IteratorSpec>::obeys_prophetic_iter_laws(&left),
         <J as IteratorSpec>::obeys_prophetic_iter_laws(&right),
-        <I as IteratorSpec>::initial_value_relation(&left, &left),
-        <J as IteratorSpec>::initial_value_relation(&right, &right),
+        // <I as IteratorSpec>::initial_value_relation(&left, &left),
+        // <J as IteratorSpec>::initial_value_relation(&right, &right),
         zip_post(left, right, into_zip_spec(left, right)),
 ensures
     {
@@ -465,7 +465,7 @@ ensures
         let zipped_remaining = <Zip<I, J> as IteratorSpec>::remaining(&r);
 
         &&& <Zip<I, J> as IteratorSpec>::obeys_prophetic_iter_laws(&r)
-        &&& <Zip<I, J> as IteratorSpec>::initial_value_relation(&r, &r)
+        // &&& <Zip<I, J> as IteratorSpec>::initial_value_relation(&r, &r)
         &&& <Zip<I, J> as IteratorSpec>::remaining(&r) ==
                 zip_seq(<I as IteratorSpec>::remaining(&left), <J as IteratorSpec>::remaining(&right),)
         &&& <Zip<I, J> as IteratorSpec>::will_return_none(&r) ==
@@ -496,12 +496,12 @@ impl<A, B> IteratorSpecImpl for Zip<A, B>
         &&& zip_right(*self).will_return_none()
     }
 
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& zip_left(*self).initial_value_relation(&zip_left(*init))
-        &&& zip_right(*self).initial_value_relation(&zip_right(*init))
-    }
+    // #[verifier::prophetic]
+    // open spec fn initial_value_relation(&self, init: &Self) -> bool {
+    //     &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+    //     &&& zip_left(*self).initial_value_relation(&zip_left(*init))
+    //     &&& zip_right(*self).initial_value_relation(&zip_right(*init))
+    // }
 
     closed spec fn decrease(&self) -> Option<nat> {
         match (zip_left(*self).decrease(), zip_right(*self).decrease()) {

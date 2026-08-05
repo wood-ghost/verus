@@ -488,9 +488,17 @@ test_verify_one_file! {
                   && (forall |i: int| self.idx@ <= i < self.idx@ + self.iter.remaining().len() ==> self.prophs@.proph_elem(i).is_some())
             }
 
+            #[verifier::prophetic]
+            open spec fn initial_value_relation(&self, init: &Self) -> bool {
+                &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
+                &&& self.inner().initial_value_relation(&init.inner())
+            }
+
+
             closed spec fn decrease(&self) -> Option<nat> {
                 self.inner().decrease()
             }
+
 
             open spec fn peek(&self, index: int) -> Option<Self::Item> {
                 match self.inner().peek(index) {
@@ -572,6 +580,32 @@ test_verify_one_file! {
                     *x != 0
                 },
             );
+
+            if let Some(start) = result {
+                assert(start < end);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    position_through_mut_ref verus_code! {
+        use vstd::prelude::*;
+
+        fn test(data: &[u8], end: usize)
+            requires
+                end <= data.len(),
+        {
+            let result =
+                <&mut std::slice::Iter<'_, u8> as Iterator>::position(
+                    &mut (&mut data[..end].iter()),
+                    |x: &u8| -> (found: bool)
+                        ensures found == (*x != 0),
+                    {
+                        *x != 0
+                    },
+                );
 
             if let Some(start) = result {
                 assert(start < end);

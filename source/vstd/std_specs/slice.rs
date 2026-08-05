@@ -436,7 +436,6 @@ pub assume_specification<T: Copy, R: core::ops::RangeBounds<usize>>[ <[T]>::copy
 ;
 
 pub broadcast group group_slice_axioms {
-    axiom_spec_slice_iter,
     axiom_slice_get_range,
     axiom_slice_get_range_to,
     axiom_slice_get_range_from,
