@@ -7,7 +7,7 @@ use air::ast::{Commands, Ident};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 /*
 In SMT-LIB format (used by Z3), symbols are built of letters, digits, and:
@@ -255,6 +255,9 @@ pub const STRSLICE_GET_CHAR: &str = "str%strslice_get_char";
 pub const STRSLICE_NEW_STRLIT: &str = "str%new_strlit";
 // only used to prove that new_strlit is injective
 pub const STRSLICE_FROM_STRLIT: &str = "str%from_strlit";
+
+pub const BYTESTR_NEW_BYTELIT: &str = "bytes%new_bytelit";
+pub const BYTESTR_FROM_BYTELIT_HASH: &str = "bytes%from_bytelit_hash";
 
 pub const IEEE_FLOAT_CAST: &str = "ieee_float_cast";
 pub const IEEE_FLOAT_NEG: &str = "ieee_float_neg";
@@ -980,13 +983,12 @@ impl CommandContext {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
-    pub hint_upon_failure: Mutex<Option<crate::messages::Message>>,
 }
 
 impl CommandsWithContextX {
@@ -1003,22 +1005,7 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
-            hint_upon_failure: Mutex::new(None),
         })
-    }
-}
-
-impl Clone for CommandsWithContextX {
-    fn clone(&self) -> Self {
-        CommandsWithContextX {
-            context: self.context.clone(),
-            commands: self.commands.clone(),
-            prover_choice: self.prover_choice.clone(),
-            skip_recommends: self.skip_recommends.clone(),
-            hint_upon_failure: Mutex::new(
-                self.hint_upon_failure.lock().expect("we abort on poisoning").clone(),
-            ),
-        }
     }
 }
 
@@ -1333,13 +1320,6 @@ pub fn array_new_path() -> Path {
     Arc::new(PathX {
         krate: CrateId::Vstd,
         segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_new".to_string())]),
-    })
-}
-
-pub(crate) fn option_type_path() -> Path {
-    Arc::new(PathX {
-        krate: CrateId::Core,
-        segments: Arc::new(vec![Arc::new("option".to_string()), Arc::new("Option".to_string())]),
     })
 }
 

@@ -257,7 +257,6 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                 let t2 = self.visit_typ(t2)?;
                 R::ret(|| NullaryOpr::ConstTypBound(R::get(t1), R::get(t2)))
             }
-            NullaryOpr::NoInferSpecForLoopIter => R::ret(|| nopr.clone()),
         }
     }
 
@@ -315,6 +314,7 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
             ExprX::ExecFnByName(_fun) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Fuel(_fun, _fuel, _is_broadcast_use) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::RevealString(_s) => R::ret(|| expr_new(expr.x.clone())),
+            ExprX::RevealByteString(_bs) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::BreakOrContinue { label: _, is_break: _ } => R::ret(|| expr_new(expr.x.clone())),
             ExprX::AirStmt(_) => R::ret(|| expr_new(expr.x.clone())),
             ExprX::Nondeterministic => R::ret(|| expr_new(expr.x.clone())),

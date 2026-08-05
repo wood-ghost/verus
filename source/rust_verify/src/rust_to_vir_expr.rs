@@ -3036,7 +3036,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
             let label = bctx.fresh_label(expr.hir_id, label);
             let allow_complex_invariants = allow_complex_invariants();
-            let bctx = &BodyCtxt { loop_isolation, ..bctx.clone() };
             let typ = typ_of_node_unadjusted(bctx, block.span, &block.hir_id)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ)?;
             let mut header =
@@ -3475,8 +3474,13 @@ fn lit_to_vir<'tcx>(
             let c = vir::ast::Constant::Char(c);
             mk_expr(ExprX::Const(c))
         }
+        LitKind::Byte(b) => mk_lit_int(false, u128::from(b), typ),
         LitKind::Str(s, _str_style) => {
             let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+            mk_expr(ExprX::Const(c))
+        }
+        LitKind::ByteStr(bs, _str_style) => {
+            let c = Constant::ByteStr(Arc::new(bs.as_byte_str().to_vec()));
             mk_expr(ExprX::Const(c))
         }
         LitKind::Float(..) => {

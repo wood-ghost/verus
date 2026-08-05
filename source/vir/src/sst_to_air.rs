@@ -10,14 +10,14 @@ use crate::ast_util::{
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
-    ARCH_SIZE, CommandsWithContext, CommandsWithContextX, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, NameCtxt, POLY, ProverChoice,
-    SNAPSHOT_BOUNDARY, SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_LEN,
-    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, SnapPos, SpanKind, Spanned, U_HI, encode_dt_as_path, new_internal_qid,
-    new_user_qid_name, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
-    prefix_pre_var, prefix_requires, prefix_spec_fn_type, snapshot_ident, suffix_global_id,
-    suffix_local_unique_id, suffix_typ_param_ids,
+    ARCH_SIZE, BYTESTR_NEW_BYTELIT, CommandsWithContext, CommandsWithContextX, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, NameCtxt, POLY,
+    ProverChoice, SNAPSHOT_BOUNDARY, SNAPSHOT_CALL, SNAPSHOT_LOOP, SNAPSHOT_PRE, STRSLICE_GET_CHAR,
+    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, SnapPos, SpanKind, Spanned, U_HI,
+    encode_dt_as_path, new_internal_qid, new_user_qid_name, prefix_ensures, prefix_fuel_id,
+    prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type,
+    snapshot_ident, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
 };
 use crate::messages::{Span, error, error_with_label};
 use crate::poly::{MonoTyp, MonoTypX, MonoTyps, typ_as_mono, typ_is_poly};
@@ -758,6 +758,33 @@ fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
     ))
 }
 
+fn byte_str_to_const_bytes(ctx: &Ctx, bytes: Arc<Vec<u8>>) -> Expr {
+    use num_bigint::BigUint;
+    use sha2::{Digest, Sha512};
+
+    let mut byte_string_hashes = ctx.byte_string_hashes.borrow_mut();
+
+    let mut hasher = Sha512::new();
+    hasher.update(bytes.as_slice());
+    let res = hasher.finalize();
+
+    #[cfg(target_endian = "little")]
+    let num = BigUint::from_bytes_le(&res[..]);
+
+    #[cfg(target_endian = "big")]
+    let num = BigUint::from_bytes_be(&res[..]);
+
+    if let Some(other_bytes) = byte_string_hashes.insert(num.clone(), bytes.clone()) {
+        if other_bytes != bytes {
+            panic!("sha512 collision detected, choosing to panic over introducing unsoundness");
+        }
+    }
+
+    let hash_expr = Arc::new(ExprX::Const(Constant::Nat(Arc::new(num.to_string()))));
+    let len_expr = mk_nat(bytes.len());
+    str_apply(BYTESTR_NEW_BYTELIT, &vec![hash_expr, len_expr])
+}
+
 fn char_to_unicode_repr(c: char) -> u32 {
     c as u32
 }
@@ -768,6 +795,7 @@ pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::ast::Constant) -> Ex
         crate::ast::Constant::Int(i) => big_int_to_expr(i),
         crate::ast::Constant::Real(r) => air::ast_util::mk_real(r),
         crate::ast::Constant::StrSlice(s) => str_to_const_str(ctx, s.clone()),
+        crate::ast::Constant::ByteStr(bs) => byte_str_to_const_bytes(ctx, bs.clone()),
         crate::ast::Constant::Char(c) => {
             Arc::new(ExprX::Const(Constant::Nat(Arc::new(char_to_unicode_repr(*c).to_string()))))
         }
@@ -1043,9 +1071,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(t1, t2)) => {
             crate::traits::const_typ_bound_to_air(ctx, t1, t2)
         }
-        ExpX::NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => {
-            panic!("internal error: NoInferSpecForLoopIter")
-        }
         ExpX::Unary(op, e) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
@@ -1131,11 +1156,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", e)
-            }
-            UnaryOp::InferSpecForLoopIter { .. } => {
-                // loop_inference failed to promote to Some, so demote to None
-                let e = crate::loop_inference::make_option_exp(None, &e.span, &e.typ);
-                exp_to_expr(ctx, &e, expr_ctxt)?
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: CastToInteger should have been removed before here")
@@ -2564,6 +2584,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let stmt = Arc::new(StmtX::Assume(exprx));
             vec![stmt]
         }
+        StmX::RevealByteString(lit) => {
+            let facts = byte_string_indices_to_air(ctx, lit.clone());
+
+            vec![Arc::new(StmtX::Assume(facts))]
+        }
         StmX::Block(stms) => {
             if ctx.debug {
                 state.push_scope();
@@ -2579,8 +2604,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::Air(s) => {
-            let mut parser = sise::Parser::new(s.as_bytes());
-            let node = sise::read_into_tree(&mut parser).unwrap();
+            let mut parser = sise::Parser::new(s);
+            let node = sise::parse_tree(&mut parser).unwrap();
 
             let stmt = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
                 .node_to_stmt(&node);
@@ -2634,12 +2659,9 @@ fn loop_to_stmts(
     };
     let mut invs_entry: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
     let mut invs_exit: Vec<(Span, Expr, Option<Arc<String>>, bool)> = Vec::new();
-    let mut hint_message = None;
     let modified_vars = modified_vars.as_ref().unwrap();
     for inv in invs.iter() {
-        let inv_exp =
-            crate::loop_inference::finalize_inv(&modified_vars, &inv.inv, &mut hint_message);
-        let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
+        let expr = exp_to_expr(ctx, &inv.inv, expr_ctxt)?;
         if cond.is_some() {
             assert!(inv.at_entry);
             assert!(inv.at_exit);
@@ -2880,11 +2902,6 @@ fn loop_to_stmts(
             ProverChoice::DefaultProver,
             false,
         );
-        {
-            let mut guard =
-                loop_cmd_context.hint_upon_failure.lock().expect("we abort on poisoning");
-            *guard = hint_message;
-        }
         state.commands.push(loop_cmd_context);
     }
 
@@ -2961,6 +2978,46 @@ fn string_indices_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
     let exprs = Arc::new(exprs);
     let exprx = Arc::new(ExprX::Multi(MultiOp::And, exprs));
     exprx
+}
+
+fn byte_string_index_to_air(ctx: &Ctx, cnst: &Expr, len: usize, index: usize, value: u8) -> Expr {
+    let u8_typ = Arc::new(TypX::Int(IntRange::U(8)));
+
+    let len_typ = Arc::new(TypX::ConstInt(BigInt::from(len)));
+
+    let index_typ = Arc::new(TypX::Int(IntRange::Int));
+
+    let mut args = typ_to_ids(ctx, &u8_typ);
+    args.extend(typ_to_ids(ctx, &len_typ));
+
+    args.push(cnst.clone());
+
+    let boxed_index =
+        try_box(ctx, mk_nat(index), &index_typ).expect("integer index must be boxable");
+
+    args.push(boxed_index);
+
+    let lhs = str_apply(crate::def::ARRAY_INDEX, &args);
+
+    let rhs = try_box(ctx, mk_nat(value), &u8_typ).expect("u8 value must be boxable");
+
+    mk_eq(&lhs, &rhs)
+}
+
+fn byte_string_indices_to_air(ctx: &Ctx, lit: Arc<Vec<u8>>) -> Expr {
+    if lit.is_empty() {
+        return Arc::new(ExprX::Const(Constant::Bool(true)));
+    }
+
+    let cnst = byte_str_to_const_bytes(ctx, lit.clone());
+
+    let facts = lit
+        .iter()
+        .enumerate()
+        .map(|(index, value)| byte_string_index_to_air(ctx, &cnst, lit.len(), index, *value))
+        .collect::<Vec<_>>();
+
+    Arc::new(ExprX::Multi(MultiOp::And, Arc::new(facts)))
 }
 
 fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {

@@ -287,9 +287,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exp_new(ExpX::NullaryOpr(NullaryOpr::ConstTypBound(R::get(t1), R::get(t2))))
                 })
             }
-            ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => {
-                R::ret(|| exp_new(exp.x.clone()))
-            }
             ExpX::Unary(op, e1) => {
                 let e1 = self.visit_exp(e1)?;
                 R::ret(|| exp_new(ExpX::Unary(*op, R::get(e1))))
@@ -480,6 +477,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             }
             StmX::Fuel(..) => R::ret(|| stm.clone()),
             StmX::RevealString(_) => R::ret(|| stm.clone()),
+            StmX::RevealByteString(_) => R::ret(|| stm.clone()),
             StmX::DeadEnd(stm) => {
                 let s = self.visit_stm(&stm)?;
                 R::ret(|| stm_new(StmX::DeadEnd(R::get(s))))

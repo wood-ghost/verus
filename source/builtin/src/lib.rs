@@ -1980,6 +1980,13 @@ pub fn reveal_strlit<A>(_a: A) {
     unimplemented!()
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::verus_builtin::reveal_byteslit"]
+#[verifier::proof]
+pub fn reveal_byteslit<A>(_a: A) {
+    unimplemented!()
+}
+
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::verus_builtin::FnSpec")]
 pub struct FnSpec<Args, Output> {
     phantom: PhantomData<(Args, Output)>,
@@ -2379,13 +2386,6 @@ macro_rules! decreases_to {
 pub use decreases_to;
 #[cfg(verus_verify_core)]
 pub use decreases_to_internal;
-
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::verus_builtin::infer_spec_for_loop_iter"]
-#[verifier::spec]
-pub fn infer_spec_for_loop_iter<A>(_: A, _: A, _print_hint: bool) -> Option<A> {
-    unimplemented!()
-}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::verus_builtin::global_size_of"]

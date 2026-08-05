@@ -372,8 +372,6 @@ pub enum NullaryOpr {
     TypEqualityBound(Path, Typs, Ident, Typ),
     /// predicate representing const type bound, e.g., `const X: usize`
     ConstTypBound(Typ, Typ),
-    /// A failed InferSpecForLoopIter subexpression
-    NoInferSpecForLoopIter,
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -456,17 +454,6 @@ pub enum UnaryOp {
     HeightTrigger,
     /// Used only for handling verus_builtin::strslice_len
     StrLen,
-    /// Given an exec/proof expression used to construct a loop iterator,
-    /// try to infer a pure specification for the loop iterator.
-    /// Evaluate to Some(spec) if successful, None otherwise.
-    /// (Note: this is just used as a hint for loop invariants;
-    /// regardless of whether it is Some(spec) or None, it should not affect soundness.)
-    /// For an exec/proof expression e, the spec s should be chosen so that the value v
-    /// that e evaluates to is immutable and v == s, where v may contain local variables.
-    /// For example, if v == (n..m), then n and m must be immutable local variables.
-    InferSpecForLoopIter {
-        print_hint: bool,
-    },
     /// May need coercion after casting a type argument
     CastToInteger,
     MutRefCurrent,
@@ -823,6 +810,8 @@ pub enum Constant {
     Real(String),
     /// Hold generated string slices in here
     StrSlice(Arc<String>),
+    /// Hold byte-string literal here
+    ByteStr(Arc<Vec<u8>>),
     // Hold unicode values here
     Char(char),
     /// Rust representation of f32 constant as u32 bits
@@ -1162,6 +1151,8 @@ pub enum ExprX {
     Fuel(Fun, u32, bool),
     /// Reveal a string
     RevealString(Arc<String>),
+    /// Reveal a byte-string
+    RevealByteString(Arc<Vec<u8>>),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).

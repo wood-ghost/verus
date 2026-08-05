@@ -569,7 +569,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
         ExpX::NullaryOpr(NullaryOpr::TraitBound(..)) => exp.clone(),
         ExpX::NullaryOpr(NullaryOpr::TypEqualityBound(..)) => exp.clone(),
         ExpX::NullaryOpr(NullaryOpr::ConstTypBound(..)) => exp.clone(),
-        ExpX::NullaryOpr(NullaryOpr::NoInferSpecForLoopIter) => exp.clone(),
         ExpX::Unary(op, e1) => {
             let e1 = visit_exp(ctx, state, e1);
             match op {
@@ -586,11 +585,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen => {
                     let e1 = coerce_exp_to_native(ctx, &e1);
-                    mk_exp(ExpX::Unary(*op, e1))
-                }
-                UnaryOp::InferSpecForLoopIter { .. } => {
-                    // e1 will be the argument to spec Option::Some(...)
-                    let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
                 UnaryOp::HeightTrigger | UnaryOp::Length(_) => {
@@ -958,6 +952,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
         }
         StmX::Fuel(_, _) => stm.clone(),
         StmX::RevealString(_) => stm.clone(),
+        StmX::RevealByteString(_) => stm.clone(),
         StmX::DeadEnd(stm) => {
             let stm = visit_stm(ctx, state, stm);
             mk_stm(StmX::DeadEnd(stm))

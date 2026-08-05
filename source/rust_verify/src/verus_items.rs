@@ -126,6 +126,7 @@ pub(crate) enum DirectiveItem {
     RevealHide,
     RevealHideInternalPath,
     RevealStrlit,
+    RevealByteslit,
     InlineAirStmt,
 }
 
@@ -152,7 +153,6 @@ pub(crate) enum ExprItem {
     IsSmallerThanLexicographic,
     IsSmallerThanRecursiveFunctionField,
     DefaultEnsures,
-    InferSpecForLoopIter,
     ShrRefStructWrap,
 }
 
@@ -523,6 +523,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::reveal_hide",             VerusItem::Directive(DirectiveItem::RevealHide)),
         ("verus::verus_builtin::reveal_hide_internal_path", VerusItem::Directive(DirectiveItem::RevealHideInternalPath)),
         ("verus::verus_builtin::reveal_strlit",           VerusItem::Directive(DirectiveItem::RevealStrlit)),
+        ("verus::verus_builtin::reveal_byteslit",         VerusItem::Directive(DirectiveItem::RevealByteslit)),
         ("verus::verus_builtin::inline_air_stmt",         VerusItem::Directive(DirectiveItem::InlineAirStmt)),
 
         ("verus::verus_builtin::choose",                  VerusItem::Expr(ExprItem::Choose)),
@@ -546,7 +547,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::verus_builtin::is_smaller_than_lexicographic", VerusItem::Expr(ExprItem::IsSmallerThanLexicographic)),
         ("verus::verus_builtin::is_smaller_than_recursive_function_field", VerusItem::Expr(ExprItem::IsSmallerThanRecursiveFunctionField)),
         ("verus::verus_builtin::default_ensures",         VerusItem::Expr(ExprItem::DefaultEnsures)),
-        ("verus::verus_builtin::infer_spec_for_loop_iter", VerusItem::Expr(ExprItem::InferSpecForLoopIter)),
         ("verus::verus_builtin::shr_ref_struct_wrap",     VerusItem::Expr(ExprItem::ShrRefStructWrap)),
 
         ("verus::verus_builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),

@@ -290,12 +290,6 @@ impl<'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 
     uninterp spec fn will_return_none(&self) -> bool;
 
-    #[verifier::prophetic]
-    open spec fn initial_value_relation(&self, init: &Self) -> bool {
-        &&& IteratorSpec::remaining(init) == IteratorSpec::remaining(self)
-        &&& into_iter_elts(*self) == IteratorSpec::remaining(self)
-    }
-
     uninterp spec fn decrease(&self) -> Option<nat>;
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
@@ -317,35 +311,18 @@ impl<'a, T: 'a> super::iter::DoubleEndedIteratorSpecImpl for Iter<'a, T> {
     }
 }
 
-// To allow reasoning about the ghost iterator when the executable
-// function `iter()` is invoked in a `for` loop header (e.g., in
-// `for x in it: v.iter() { ... }`), we need to specify the behavior of
-// the iterator in spec mode. To do that, we add
-// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
-// the executable `iter` method and define that spec function here.
-pub uninterp spec fn spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>) -> (r: Iter<'a, T>);
-
-pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>)
-    ensures
-        #[trigger] spec_iter(v).remaining() == v@.as_ref(),
-{
-    admit();
-}
-
-#[verifier::when_used_as_spec(spec_iter)]
 pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
     v: &'a VecDeque<T, A>,
 ) -> (iter: Iter<'a, T>)
     ensures
-        iter == spec_iter(v),
+        IteratorSpec::remaining(&iter) == v@.as_ref(),
+        into_iter_elts(iter) == IteratorSpec::remaining(&iter),
         IteratorSpec::decrease(&iter) is Some,
-        IteratorSpec::initial_value_relation(&iter, &iter),
 ;
 
 pub broadcast group group_vec_dequeue_axioms {
     axiom_spec_len,
     axiom_vec_dequeue_index_decreases,
-    axiom_spec_iter,
 }
 
 } // verus!

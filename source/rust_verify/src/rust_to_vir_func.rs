@@ -303,7 +303,6 @@ fn mk_bctx<'tcx>(
         mode,
         external_body,
         in_ghost: mode != Mode::Exec,
-        loop_isolation: false,
         atomically: None,
         migrate_postcondition_vars,
         in_fn_sig: false,
