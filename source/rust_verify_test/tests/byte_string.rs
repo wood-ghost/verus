@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] byte_string_opaque_without_reveal verus_code! {
+    #[test] test_byte_string_opaque_without_reveal verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -20,7 +20,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_string_reveal_contents verus_code! {
+    #[test] test_byte_string_reveal_contents verus_code! {
         use vstd::prelude::*;
 
         const ICON_PATTERN: &'static [u8; 4] =
@@ -61,7 +61,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_string_reveal_soundness verus_code! {
+    #[test] test_byte_string_reveal_soundness verus_code! {
         use vstd::prelude::*;
 
         fn wrong_byte() {
@@ -85,7 +85,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_string_distinct_same_length verus_code! {
+    #[test] test_byte_string_distinct_same_length verus_code! {
         const X: &'static [u8; 3] = b"ABC";
         const Y: &'static [u8; 3] = b"XYZ";
 
@@ -97,7 +97,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_string_same_literal_equal verus_code! {
+    #[test] test_byte_string_same_literal_equal verus_code! {
         const X: &'static [u8; 3] = b"ABC";
         const Y: &'static [u8; 3] = b"ABC";
 
@@ -108,7 +108,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] reveal_byteslit_requires_literal verus_code! {
+    #[test] test_reveal_byteslit_requires_literal verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -120,7 +120,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] reveal_byteslit_requires_one_argument verus_code! {
+    #[test] test_reveal_byteslit_requires_one_argument verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -135,7 +135,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] reveal_byteslit_requires_proof_mode verus_code! {
+    #[test] test_reveal_byteslit_requires_proof_mode verus_code! {
         use vstd::prelude::*;
 
         fn test() {
@@ -148,7 +148,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_string_edge_cases verus_code! {
+    #[test] test_byte_string_edge_cases verus_code! {
         use vstd::prelude::*;
 
         fn empty() {
@@ -190,7 +190,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_string_in_struct verus_code! {
+    #[test] test_byte_string_in_struct verus_code! {
         use vstd::prelude::*;
 
         struct ByteMatcher {
@@ -238,6 +238,21 @@ test_verify_one_file! {
             assert(matcher.pattern@[4] == 0u8);
             assert(matcher.pattern@[8] == b'A');
             assert(matcher.pattern@[11] == b' ');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_byte_string_compute_only verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test() {
+            assert(b"\x00\xff"@[0] == 0u8) by (compute_only);
+            assert(b"\x00\xff"@[1] == 0xffu8) by (compute_only);
+
+            assert(
+                (b"\x01"@[0] & b"\xff"@[0]) == 1u8
+            ) by (compute_only);
         }
     } => Ok(())
 }

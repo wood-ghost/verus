@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] byte_char_literals verus_code! {
+    #[test] test_byte_char_literals verus_code! {
         const ZERO: u8 = b'\x00';
         const SPACE: u8 = b' ';
         const GREATER_THAN: u8 = b'>';
@@ -32,7 +32,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_char_set_literal_0 verus_code! {
+    #[test] test_byte_char_set_literal_0 verus_code! {
         use vstd::set::*;
 
         proof fn empty() {
@@ -44,7 +44,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_char_set_literal_1 verus_code! {
+    #[test] test_byte_char_set_literal_1 verus_code! {
         use vstd::set::*;
 
         proof fn singleton() {
@@ -62,7 +62,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_char_set_literal_2 verus_code! {
+    #[test] test_byte_char_set_literal_2 verus_code! {
         use vstd::set::*;
 
         proof fn two_elements() {
@@ -83,7 +83,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] byte_char_seq_literals verus_code! {
+    #[test] test_byte_char_seq_literals verus_code! {
         use vstd::seq::*;
 
         proof fn ascii() {
