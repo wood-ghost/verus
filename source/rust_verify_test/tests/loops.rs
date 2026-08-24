@@ -1725,6 +1725,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] zip_iter verus_code! {
+        use vstd::prelude::*;
+        fn test() {
+            let left: Vec<u8> = vec![1, 2, 3];
+            let right: Vec<u8> = vec![4, 5, 6];
+            let mut result: Vec<(u8, u8)> = vec![];
+
+            for pair in iter: left.iter().zip(right.iter())
+                invariant
+                    result.len() == iter.index(),
+                    forall |i: int| 0 <= i < iter.seq().len() ==>
+                        *iter.seq()[i].0 == left@[i]
+                        && *iter.seq()[i].1 == right@[i],
+                    forall |i: int| 0 <= i < result.len() ==>
+                        result[i] == (left@[i], right@[i]),
+            {
+                result.push((*pair.0, *pair.1));
+            }
+
+            assert(result@ == seq![(1u8, 4u8), (2u8, 5u8), (3u8, 6u8)]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
   #[test] test_vecdeque_for_loop verus_code! {
       use vstd::prelude::*;
       use vstd::std_specs::vecdeque::*;
