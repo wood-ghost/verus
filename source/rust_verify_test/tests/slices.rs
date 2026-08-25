@@ -1124,6 +1124,9 @@ test_verify_one_file! {
         {
             left == right
         }
+    } => Ok(())
+}
+
 test_verify_one_bv_file! {
     #[test] test_slice_starts_with verus_code! {
         use vstd::prelude::*;
