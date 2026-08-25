@@ -5,7 +5,7 @@ use super::super::seq::{
 
 use verus as verus_;
 
-use core::iter::{FromIterator, Iterator, Rev};
+use core::iter::{FromIterator, Iterator, Rev, Zip};
 
 verus_! {
 
@@ -78,6 +78,7 @@ pub trait ExIterator {
                 r == into_rev_spec(self) && rev_post(self, r),
     ;
 
+    #[verifier::impls_cannot_extend_spec]
     fn collect<B>(self) -> (collection: B)
         where
             B: FromIterator<Self::Item>,
@@ -87,6 +88,50 @@ pub trait ExIterator {
                 self.will_return_none() &&
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
+
+    #[verifier::impls_cannot_extend_spec]
+    fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>)
+        where
+            Self: Sized,
+            U: IntoIterator,
+        ensures
+            self.obeys_prophetic_iter_laws() ==>
+            r == into_zip_spec(self, other) && zip_post(self, other, r),
+    ;
+
+    fn position<P>(&mut self, predicate: P) -> (r: Option<usize>)
+        where
+            Self: Sized,
+            P: FnMut(Self::Item) -> bool,
+        ensures
+            // The iterator consistently obeys, completes, and decreases throughout its lifetime
+            final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
+            final(self).obeys_prophetic_iter_laws() ==> final(self).will_return_none() == old(self).will_return_none(),
+            final(self).obeys_prophetic_iter_laws() ==> (old(self).decrease() is Some <==> final(self).decrease() is Some),
+            final(self).obeys_prophetic_iter_laws() ==> {
+                final(self).remaining().is_suffix_of(old(self).remaining())
+            },
+            // If position returns None, then the iterator has no remaining
+            // elements, and the predicate was false for all of the original
+            // iterator's elements.
+            final(self).obeys_prophetic_iter_laws() && r.is_none() ==> {
+                &&& final(self).remaining().len() == 0
+                &&& forall |i| 0 <= i < old(self).remaining().len() ==>
+                    predicate.ensures((#[trigger] old(self).remaining()[i],), false)
+            },
+            // If position returns Some, then the returned index whose value satisfies the
+            // predicate, and all previous elements did not satisfy the predicate.
+            final(self).obeys_prophetic_iter_laws() && r.is_some() ==> {
+                let index = r.unwrap();
+                {
+                    &&& index as int == (old(self).remaining().len() - final(self).remaining().len() - 1)
+                    &&& (index as int) < old(self).remaining().len()
+                    &&& 0 <= final(self).remaining().len() < old(self).remaining().len()
+                    &&& predicate.ensures((#[trigger] old(self).remaining()[index as int],), true)
+                    &&& forall |i| 0 <= i < index as int ==>
+                        predicate.ensures((#[trigger] old(self).remaining()[i],), false)
+                }
+            };
 
     fn find<P>(&mut self, predicate: P) -> (r: Option<Self::Item>)
         where Self: Sized,
@@ -237,6 +282,9 @@ pub trait ExDoubleEndedIterator : Iterator {
 #[verifier::external_trait_specification]
 pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+
+    type Item;
+    type IntoIter: Iterator<Item = Self::Item>;
 }
 
 pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
@@ -370,6 +418,92 @@ impl <I> IteratorSpecImpl for &mut I
 
     open spec fn peek(&self, index: int) -> Option<Self::Item> {
         <I as IteratorSpec>::peek(*self, index)
+    }
+}
+
+/********************************************************************************
+ * Definitions for `zip()`
+ ********************************************************************************/
+#[verifier::external_body]
+#[verifier::external_type_specification]
+#[verifier::reject_recursive_types(I)]
+#[verifier::reject_recursive_types(J)]
+pub struct ExZip<I, J>(core::iter::Zip<I, J>);
+
+pub open spec fn zip_seq<I, J>(left: Seq<I>, right: Seq<J>) -> Seq<(I, J)> {
+    let len = if left.len() <= right.len() { left.len() } else { right.len() };
+    Seq::new(len, |i: int| (left[i], right[i]))
+}
+
+pub uninterp spec fn zip_left<I, J>(z: Zip<I, J>) -> I;
+
+pub uninterp spec fn zip_right<I, J>(z: Zip<I, J>) -> J;
+
+pub uninterp spec fn into_zip_spec<I, J>(left: I, right: J) -> Zip<I, <J as IntoIterator>::IntoIter>
+    where
+        J: IntoIterator,
+;
+
+pub uninterp spec fn zip_post<I, J>(left: I, right: J, r: Zip<I, <J as IntoIterator>::IntoIter>) -> bool
+    where
+        J: IntoIterator,
+;
+
+pub broadcast axiom fn zip_postcondition<I: Iterator + IteratorSpec, J: Iterator + IteratorSpec>(left: I, right: J)
+    requires
+        <I as IteratorSpec>::obeys_prophetic_iter_laws(&left),
+        <J as IteratorSpec>::obeys_prophetic_iter_laws(&right),
+        zip_post(left, right, into_zip_spec(left, right)),
+ensures
+    {
+        let r = #[trigger] into_zip_spec(left, right);
+        let left_remaining = <I as IteratorSpec>::remaining(&left);
+        let right_remaining = <J as IteratorSpec>::remaining(&right);
+        let zipped_remaining = <Zip<I, J> as IteratorSpec>::remaining(&r);
+
+        &&& <Zip<I, J> as IteratorSpec>::obeys_prophetic_iter_laws(&r)
+        &&& <Zip<I, J> as IteratorSpec>::remaining(&r) ==
+                zip_seq(<I as IteratorSpec>::remaining(&left), <J as IteratorSpec>::remaining(&right),)
+        &&& <Zip<I, J> as IteratorSpec>::will_return_none(&r) ==
+                (<I as IteratorSpec>::will_return_none(&left) && <J as IteratorSpec>::will_return_none(&right))
+        &&& (<Zip<I, J> as IteratorSpec>::decrease(&r) is Some ==
+            (<I as IteratorSpec>::decrease(&left) is Some && <J as IteratorSpec>::decrease(&right) is Some)
+        )
+        &&& forall |i: int| 0 <= i < zipped_remaining.len() ==>
+                zipped_remaining[i] == (#[trigger] left_remaining[i], right_remaining[i])
+    },
+;
+
+impl<A, B> IteratorSpecImpl for Zip<A, B>
+    where A: Iterator + IteratorSpec, B: Iterator + IteratorSpec {
+    open spec fn obeys_prophetic_iter_laws(&self) -> bool {
+        &&& zip_left(*self).obeys_prophetic_iter_laws()
+        &&& zip_right(*self).obeys_prophetic_iter_laws()
+    }
+
+    #[verifier::prophetic]
+    closed spec fn remaining(&self) -> Seq<Self::Item> {
+        zip_seq(zip_left(*self).remaining(), zip_right(*self).remaining())
+    }
+
+    #[verifier::prophetic]
+    closed spec fn will_return_none(&self) -> bool {
+        &&& zip_left(*self).will_return_none()
+        &&& zip_right(*self).will_return_none()
+    }
+
+    closed spec fn decrease(&self) -> Option<nat> {
+        match (zip_left(*self).decrease(), zip_right(*self).decrease()) {
+            (Some(l), Some(r)) => Some(if l <= r { l } else { r }),
+            _ => None,
+        }
+    }
+
+    open spec fn peek(&self, index: int) -> Option<Self::Item> {
+        match (zip_left(*self).peek(index), zip_right(*self).peek(index)) {
+            (Some(l), Some(r)) => Some((l, r)),
+            _ => None,
+        }
     }
 }
 
@@ -510,6 +644,7 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
 
 pub broadcast group group_iter_axioms {
     rev_postcondition,
+    zip_postcondition,
 }
 
 } // verus!
