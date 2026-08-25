@@ -1064,7 +1064,6 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-<<<<<<< HEAD
 test_verify_one_file! {
     #[test]
     slice_equality_uses_view verus_code! {
@@ -1125,7 +1124,6 @@ test_verify_one_file! {
         {
             left == right
         }
-=======
 test_verify_one_bv_file! {
     #[test] test_slice_starts_with verus_code! {
         use vstd::prelude::*;
@@ -1191,7 +1189,6 @@ test_verify_one_bv_file! {
             assert(v.ends_with(&[]));
         }
 
->>>>>>> slice
     } => Ok(())
 }
 
