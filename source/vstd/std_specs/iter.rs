@@ -159,6 +159,10 @@ pub trait ExIterator {
     fn all<F>(&mut self, f: F) -> (r: bool)
         where Self: Sized,
             F: FnMut(Self::Item) -> bool
+        requires
+            self.obeys_prophetic_iter_laws() ==>
+                forall |i| 0 <= i < self.remaining().len() ==>
+                    f.requires((#[trigger] self.remaining()[i],)),
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
