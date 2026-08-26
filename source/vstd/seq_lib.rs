@@ -53,6 +53,15 @@ impl<A> Seq<A> {
         Seq::new(self.len(), |i: int| &self[i])
     }
 
+    pub broadcast proof fn lemma_as_ref_index(self, i: int)
+        requires 0 <= i < self.len(),
+        ensures *(#[trigger] self.as_ref()[i]) == self[i],
+    {}
+
+    pub proof fn lemma_as_ref_len(self)
+        ensures self.as_ref().len() == self.len(),
+    {}
+
     /// Is true if the calling sequence is a prefix of the given sequence 'other'.
     ///
     /// ## Example
