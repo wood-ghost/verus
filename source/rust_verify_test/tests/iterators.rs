@@ -183,6 +183,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] find_returns_first_match_iter verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test()
+        {
+            let a = [11, 7, 8, 12, 4];
+            let mut it = a.iter();
+
+            let result = it.find(
+                |x| -> (ret: bool)
+                    ensures ret == (**x % 4 == 0),
+                {
+                    **x % 4 == 0
+                }
+            );
+
+            assert(result == Some(&8));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] all_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;

@@ -185,6 +185,23 @@ test_verify_one_file! {
             assert(last.is_none());
         }
     } => Ok(())
+}   
+
+test_verify_one_file! {
+    #[test] test_slice_iter_remaining_preserves_values verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(a: &[u32])
+        {
+            let it = a.iter();
+
+            assert(forall |i: int|
+                0 <= i < a.len() ==>
+                    *it.remaining()[i] == a@[i]
+            );
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

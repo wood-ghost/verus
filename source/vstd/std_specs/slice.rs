@@ -356,7 +356,10 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
         true
     }
 
-    uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    // uninterp spec fn remaining(&self) -> Seq<Self::Item>;
+    open spec fn remaining(&self) -> Seq<Self::Item> {
+        into_iter_elts(*self).as_ref()
+    }
     uninterp spec fn will_return_none(&self) -> bool;
     uninterp spec fn decrease(&self) -> Option<nat>;
 
@@ -369,9 +372,26 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
     }
 }
 
+pub broadcast proof fn lemma_iter_remaining_index<'a, T: 'a>(
+    iter: Iter<'a, T>,
+    i: int,
+)
+    requires
+        0 <= i < IteratorSpec::remaining(&iter).len(),
+    ensures
+        *(#[trigger] IteratorSpec::remaining(&iter)[i])
+            == into_iter_elts(iter)[i],
+{
+    broadcast use Seq::lemma_as_ref_index;
+    broadcast use Seq::lemma_as_ref_len;
+    assert(IteratorSpec::remaining(&iter) == into_iter_elts(iter).as_ref());
+    assert(IteratorSpec::remaining(&iter).len() == into_iter_elts(iter).len());
+}
+
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
+        into_iter_elts(iter) == s@,
         into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
         IteratorSpec::decrease(&iter) is Some,
 ;
@@ -553,6 +573,10 @@ pub broadcast group group_slice_axioms {
     axiom_slice_get_range_to_inclusive,
     axiom_slice_get_range_full,
     axiom_slice_get_range_inclusive,
+}
+
+pub broadcast group group_slice_iter_lemmas {
+    lemma_iter_remaining_index,
 }
 
 } // verus!

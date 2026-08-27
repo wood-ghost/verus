@@ -53,6 +53,15 @@ impl<A> Seq<A> {
         Seq::new(self.len(), |i: int| &self[i])
     }
 
+    pub broadcast proof fn lemma_as_ref_index(self, i: int)
+        requires 0 <= i < self.len(),
+        ensures *(#[trigger] self.as_ref()[i]) == self[i],
+    {}
+
+    pub broadcast proof fn lemma_as_ref_len(self)
+        ensures (#[trigger] self.as_ref().len()) == self.len(),
+    {}
+
     /// Is true if the calling sequence is a prefix of the given sequence 'other'.
     ///
     /// ## Example
@@ -3714,6 +3723,8 @@ pub broadcast group group_seq_lib_default {
     Seq::filter_distributes_over_add,
     Seq::lemma_fold_right_split,
     Seq::lemma_fold_left_split,
+    Seq::lemma_as_ref_index,
+    Seq::lemma_as_ref_len,
 }
 
 pub broadcast group group_to_multiset_ensures {
