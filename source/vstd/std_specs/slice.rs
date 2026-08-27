@@ -301,10 +301,10 @@ pub broadcast proof fn lemma_iter_remaining_index<'a, T: 'a>(
         *(#[trigger] IteratorSpec::remaining(&iter)[i])
             == into_iter_elts(iter)[i],
 {
+    broadcast use Seq::lemma_as_ref_index;
+    broadcast use Seq::lemma_as_ref_len;
     assert(IteratorSpec::remaining(&iter) == into_iter_elts(iter).as_ref());
-    Seq::lemma_as_ref_len(into_iter_elts(iter));
     assert(IteratorSpec::remaining(&iter).len() == into_iter_elts(iter).len());
-    Seq::lemma_as_ref_index(into_iter_elts(iter), i);
 }
 
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
