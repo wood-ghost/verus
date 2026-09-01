@@ -89,28 +89,12 @@ pub trait ExIterator {
                 FromIteratorSpec::from_iter_ensures(self.remaining(), collection),
     ;
 
-<<<<<<< HEAD
-    #[verifier::impls_cannot_extend_spec]
-    fn zip<U>(self, other: U) -> (r: Zip<Self, <U as IntoIterator>::IntoIter>)
-        where
-            Self: Sized,
-            U: IntoIterator,
-        ensures
-            self.obeys_prophetic_iter_laws() ==>
-            r == into_zip_spec(self, other) && zip_post(self, other, r),
-    ;
-
-=======
->>>>>>> iter
     fn position<P>(&mut self, predicate: P) -> (r: Option<usize>)
         where
             Self: Sized,
             P: FnMut(Self::Item) -> bool,
-<<<<<<< HEAD
-=======
         requires
             forall |k| #![auto] 0 <= k < self.remaining().len() ==> call_requires(predicate, (self.remaining()[k], )),
->>>>>>> iter
         ensures
             // The iterator consistently obeys, completes, and decreases throughout its lifetime
             final(self).obeys_prophetic_iter_laws() == old(self).obeys_prophetic_iter_laws(),
