@@ -105,6 +105,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] zip_all_component_index verus_code! {
+        use vstd::prelude::*;
+
+        fn test(left: &[u8], right: &[u8])
+            requires left.len() == right.len(),
+        {
+            let all_equal = left
+                .iter()
+                .zip(right.iter())
+                .all(
+                    |x: (&u8, &u8)| -> (r: bool)
+                        ensures r == (*x.0 == *x.1),
+                    { *x.0 == *x.1 },
+                );
+
+            if all_equal {
+                assert(forall |i: int| 0 <= i < left@.len() ==> left@[i] == right@[i]);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] collect_works verus_code! {
         use vstd::prelude::*;
 
