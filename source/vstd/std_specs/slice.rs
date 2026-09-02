@@ -291,7 +291,11 @@ impl <'a, T: 'a> super::iter::IteratorSpecImpl for Iter<'a, T> {
 pub assume_specification<'a, T>[ <[T]>::iter ](s: &'a [T]) -> (iter: Iter<'a, T>)
     ensures
         IteratorSpec::remaining(&iter) == s@.as_ref(),
+        into_iter_elts(iter) == s@,
         into_iter_elts(iter) == IteratorSpec::remaining(&iter).unref(),
+        forall|i: int|
+            #![trigger s@[i], IteratorSpec::remaining(&iter)[i]]
+            0 <= i < s@.len() ==> *IteratorSpec::remaining(&iter)[i] == s@[i],
         IteratorSpec::decrease(&iter) is Some,
 ;
 
