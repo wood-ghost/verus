@@ -7,7 +7,7 @@ test_verify_one_file! {
     #[test] test_auto_reveal_strlit_invalid_boolean verus_code! {
         #[verifier::auto_reveal_strlit(typo)]
         proof fn test() {}
-    } => Err(err) => assert_vir_error_msg(err, "expected `true` or `false` for auto_reveal_strlit")
+    } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
 }
 
 test_verify_one_file! {
@@ -60,7 +60,7 @@ test_verify_one_file! {
     #[test] test_auto_reveal_strlit_extra_argument verus_code! {
         #[verifier::auto_reveal_strlit(true, typo)]
         proof fn test() {}
-    } => Err(err) => assert_vir_error_msg(err, "expected `true` or `false` for auto_reveal_strlit")
+    } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
 }
 
 test_verify_one_file! {
@@ -615,7 +615,7 @@ test_verify_one_file! {
         mod invalid {
             proof fn test() { let b = b"abc"; }
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected `true` or `false` for auto_reveal_byteslit")
+    } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
 }
 
 test_verify_one_file! {
@@ -623,5 +623,5 @@ test_verify_one_file! {
         proof fn test() {
             let s = #[verifier::auto_reveal_strlit(true, false)] "abc";
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected `true` or `false` for auto_reveal_strlit")
+    } => Err(err) => assert_vir_error_msg(err, "unrecognized verifier attribute")
 }

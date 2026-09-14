@@ -571,33 +571,31 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
                 }
-                AttrTree::Fun(span, arg, args) if arg == "auto_reveal_strlit" => {
-                    let flag = match args {
-                        None => true,
-                        Some(box [AttrTree::Fun(_, value, None)]) if value == "true" => true,
-                        Some(box [AttrTree::Fun(_, value, None)]) if value == "false" => false,
-                        _ => {
-                            return err_span(
-                                *span,
-                                "expected `true` or `false` for auto_reveal_strlit",
-                            );
-                        }
-                    };
-                    v.push(Attr::AutoRevealStrlit(flag));
+                AttrTree::Fun(_, arg, None) if arg == "auto_reveal_strlit" => {
+                    v.push(Attr::AutoRevealStrlit(true))
                 }
-                AttrTree::Fun(span, arg, args) if arg == "auto_reveal_byteslit" => {
-                    let flag = match args {
-                        None => true,
-                        Some(box [AttrTree::Fun(_, value, None)]) if value == "true" => true,
-                        Some(box [AttrTree::Fun(_, value, None)]) if value == "false" => false,
-                        _ => {
-                            return err_span(
-                                *span,
-                                "expected `true` or `false` for auto_reveal_byteslit",
-                            );
-                        }
-                    };
-                    v.push(Attr::AutoRevealByteslit(flag));
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "auto_reveal_strlit" && r == "true" =>
+                {
+                    v.push(Attr::AutoRevealStrlit(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "auto_reveal_strlit" && r == "false" =>
+                {
+                    v.push(Attr::AutoRevealStrlit(false))
+                }
+                AttrTree::Fun(_, arg, None) if arg == "auto_reveal_byteslit" => {
+                    v.push(Attr::AutoRevealByteslit(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "auto_reveal_byteslit" && r == "true" =>
+                {
+                    v.push(Attr::AutoRevealByteslit(true))
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "auto_reveal_byteslit" && r == "false" =>
+                {
+                    v.push(Attr::AutoRevealByteslit(false))
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                     if arg == "when_used_as_spec" =>
