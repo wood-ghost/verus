@@ -4,17 +4,63 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_auto_reveal_literals_unknown_argument verus_code! {
-        #[verifier::auto_reveal_literals(strlit, typo)]
+    #[test] test_auto_reveal_strlit_invalid_boolean verus_code! {
+        #[verifier::auto_reveal_strlit(typo)]
         proof fn test() {}
-    } => Err(err) => assert_vir_error_msg(err, "expected `strlit` and/or `byteslit` for auto_reveal_literals")
+    } => Err(err) => assert_vir_error_msg(err, "expected `true` or `false` for auto_reveal_strlit")
 }
 
 test_verify_one_file! {
-    #[test] test_auto_reveal_literals_nested_argument verus_code! {
-        #[verifier::auto_reveal_literals(byteslit, strlit(typo))]
+    #[test] test_auto_reveal_bare_attributes verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::auto_reveal_strlit]
+        #[verifier::auto_reveal_byteslit]
+        proof fn test() {
+            assert("abc"@[1] == 'b');
+            assert(b"def"@[1] == b'e');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_auto_reveal_both verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::auto_reveal_strlit(true)]
+        #[verifier::auto_reveal_byteslit(true)]
+        proof fn test() {
+            assert("abc"@[1] == 'b');
+            assert(b"def"@[1] == b'e');
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_auto_reveal_independent_false verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::auto_reveal_strlit(false)]
+        #[verifier::auto_reveal_byteslit(true)]
+        proof fn strings_disabled() {
+            assert(b"abc"@[1] == b'b');
+            assert("def"@[1] == 'e'); // FAILS
+        }
+
+        #[verifier::auto_reveal_strlit(true)]
+        #[verifier::auto_reveal_byteslit(false)]
+        proof fn bytes_disabled() {
+            assert("ghi"@[1] == 'h');
+            assert(b"jkl"@[1] == b'k'); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_auto_reveal_strlit_extra_argument verus_code! {
+        #[verifier::auto_reveal_strlit(true, typo)]
         proof fn test() {}
-    } => Err(err) => assert_vir_error_msg(err, "expected `strlit` and/or `byteslit` for auto_reveal_literals")
+    } => Err(err) => assert_vir_error_msg(err, "expected `true` or `false` for auto_reveal_strlit")
 }
 
 test_verify_one_file! {
@@ -25,7 +71,7 @@ test_verify_one_file! {
             str1 + " "@ + str2
         }
 
-        #[verifier::auto_reveal_literals(strlit)]
+        #[verifier::auto_reveal_strlit(true)]
         proof fn check_hello_world(str1: Seq<char>, str2: Seq<char>)
             requires
                 str1 =~= "hello"@,
@@ -42,7 +88,7 @@ test_verify_one_file! {
                 && string.subrange(0, prefix.len() as int) == prefix
         }
 
-        #[verifier::auto_reveal_literals(strlit)]
+        #[verifier::auto_reveal_strlit(true)]
         proof fn check_prefix_abc(string: Seq<char>)
             requires
                 has_prefix(string, "abc"@),
@@ -50,7 +96,7 @@ test_verify_one_file! {
             assert(string.subrange(0, 2) == "ab"@);
         }
 
-        #[verifier::auto_reveal_literals(strlit)]
+        #[verifier::auto_reveal_strlit(true)]
         proof fn function_query(input: Seq<char>)
             requires input == "abc"@,
             ensures input.len() == 3,
@@ -58,7 +104,7 @@ test_verify_one_file! {
             assert(input[1] == 'b');
         }
 
-        #[verifier::auto_reveal_literals(strlit)]
+        #[verifier::auto_reveal_strlit(true)]
         fn isolated_loop_query(n: u64) {
             let mut i = 0u64;
             while i < n
@@ -71,14 +117,14 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::auto_reveal_literals(strlit)]
+        #[verifier::auto_reveal_strlit(true)]
         proof fn nonlinear_query() {
             assert(("abc"@.len() as int) * ("abc"@.len() as int) == 9)
                 by (nonlinear_arith);
         }
 
         #[verifier::opaque]
-        #[verifier::auto_reveal_literals(strlit)]
+        #[verifier::auto_reveal_strlit(true)]
         spec fn prefix() -> Seq<char> {
             "text/"@
         }
@@ -120,7 +166,7 @@ test_verify_one_file! {
         }
 
         #[verifier::opaque]
-        #[verifier::auto_reveal_literals(strlit)]
+        #[verifier::auto_reveal_strlit(true)]
         spec fn prefix() -> Seq<char> { "text/"@ }
         proof fn definition_stays_hidden() {
             assert(prefix().len() == 5); // FAILS

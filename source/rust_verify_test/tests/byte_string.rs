@@ -11,7 +11,7 @@ test_verify_one_file! {
             first + b" "@ + second
         }
 
-        #[verifier::auto_reveal_literals(byteslit)]
+        #[verifier::auto_reveal_byteslit(true)]
         proof fn check_hello_world(first: Seq<u8>, second: Seq<u8>)
             requires
                 first =~= b"hello"@,
@@ -27,7 +27,7 @@ test_verify_one_file! {
                 && bytes.subrange(0, prefix.len() as int) == prefix
         }
 
-        #[verifier::auto_reveal_literals(byteslit)]
+        #[verifier::auto_reveal_byteslit(true)]
         proof fn check_prefix_ab(bytes: Seq<u8>)
             requires
                 has_prefix(bytes, b"abc"@),
@@ -36,7 +36,7 @@ test_verify_one_file! {
             assert(bytes.subrange(0, 2) == b"ab"@);
         }
 
-        #[verifier::auto_reveal_literals(byteslit)]
+        #[verifier::auto_reveal_byteslit(true)]
         proof fn check_masked_pattern(pattern: Seq<u8>, mask: Seq<u8>)
             requires
                 pattern =~= b"\x89\x00HTML"@,
@@ -59,7 +59,7 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::auto_reveal_literals(byteslit)]
+        #[verifier::auto_reveal_byteslit(true)]
         proof fn function_query(input: Seq<u8>)
             requires input == b"abc"@,
             ensures input[1] == b'b',
@@ -67,7 +67,7 @@ test_verify_one_file! {
             assert(input[0] == b'a');
         }
 
-        #[verifier::auto_reveal_literals(byteslit)]
+        #[verifier::auto_reveal_byteslit(true)]
         fn isolated_loop_query(n: u64) {
             let mut i = 0u64;
             while i < n
@@ -80,14 +80,14 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::auto_reveal_literals(byteslit)]
+        #[verifier::auto_reveal_byteslit(true)]
         proof fn nonlinear_query() {
             assert((b"\x03"@[0] as int) * (b"\x03"@[0] as int) == 9)
                 by (nonlinear_arith);
         }
 
         #[verifier::opaque]
-        #[verifier::auto_reveal_literals(byteslit)]
+        #[verifier::auto_reveal_byteslit(true)]
         spec fn prefix() -> Seq<u8> {
             b"text/"@
         }
@@ -129,7 +129,7 @@ test_verify_one_file! {
         }
 
         #[verifier::opaque]
-        #[verifier::auto_reveal_literals(byteslit)]
+        #[verifier::auto_reveal_byteslit(true)]
         spec fn prefix() -> Seq<u8> { b"text/"@ }
         proof fn definition_stays_hidden() {
             assert(prefix() =~= seq![b't', b'e', b'x', b't', b'/']); // FAILS

@@ -289,10 +289,8 @@ pub(crate) enum Attr {
     // exclude a particular function from being chosen in a trigger by triggers_auto
     NoAutoTrigger,
     // automatically expose selected kinds of literals in an annotated function
-    AutoRevealLiterals {
-        strlit: bool,
-        byteslit: bool,
-    },
+    AutoRevealStrlit(bool),
+    AutoRevealByteslit(bool),
     // when used in a ghost context, redirect to a specified spec method
     Autospec(String),
     // when used in a ghost context, redirect to the 'returns' clause
@@ -573,32 +571,33 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "no_auto_trigger" => {
                     v.push(Attr::NoAutoTrigger)
                 }
-                AttrTree::Fun(span, arg, kinds) if arg == "auto_reveal_literals" => {
-                    let mut strlit = false;
-                    let mut byteslit = false;
-                    if let Some(kinds) = kinds {
-                        for kind in kinds.iter() {
-                            match kind {
-                                AttrTree::Fun(_, name, None) if name == "strlit" => strlit = true,
-                                AttrTree::Fun(_, name, None) if name == "byteslit" => {
-                                    byteslit = true
-                                }
-                                _ => {
-                                    return err_span(
-                                        *span,
-                                        "expected `strlit` and/or `byteslit` for auto_reveal_literals",
-                                    );
-                                }
-                            }
+                AttrTree::Fun(span, arg, args) if arg == "auto_reveal_strlit" => {
+                    let flag = match args {
+                        None => true,
+                        Some(box [AttrTree::Fun(_, value, None)]) if value == "true" => true,
+                        Some(box [AttrTree::Fun(_, value, None)]) if value == "false" => false,
+                        _ => {
+                            return err_span(
+                                *span,
+                                "expected `true` or `false` for auto_reveal_strlit",
+                            );
                         }
-                    }
-                    if !strlit && !byteslit {
-                        return err_span(
-                            *span,
-                            "expected `strlit` and/or `byteslit` for auto_reveal_literals",
-                        );
-                    }
-                    v.push(Attr::AutoRevealLiterals { strlit, byteslit });
+                    };
+                    v.push(Attr::AutoRevealStrlit(flag));
+                }
+                AttrTree::Fun(span, arg, args) if arg == "auto_reveal_byteslit" => {
+                    let flag = match args {
+                        None => true,
+                        Some(box [AttrTree::Fun(_, value, None)]) if value == "true" => true,
+                        Some(box [AttrTree::Fun(_, value, None)]) if value == "false" => false,
+                        _ => {
+                            return err_span(
+                                *span,
+                                "expected `true` or `false` for auto_reveal_byteslit",
+                            );
+                        }
+                    };
+                    v.push(Attr::AutoRevealByteslit(flag));
                 }
                 AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                     if arg == "when_used_as_spec" =>
@@ -1289,8 +1288,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) reveal_group: bool,
     pub(crate) broadcast_use_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
-    pub(crate) auto_reveal_strlit: bool,
-    pub(crate) auto_reveal_byteslit: bool,
+    pub(crate) auto_reveal_strlit: Option<bool>,
+    pub(crate) auto_reveal_byteslit: Option<bool>,
     pub(crate) autospec: Option<String>,
     pub(crate) allow_in_spec: bool,
     pub(crate) bit_vector: bool,
@@ -1486,8 +1485,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         reveal_group: false,
         broadcast_use_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
-        auto_reveal_strlit: false,
-        auto_reveal_byteslit: false,
+        auto_reveal_strlit: None,
+        auto_reveal_byteslit: None,
         autospec: None,
         allow_in_spec: false,
         bit_vector: false,
@@ -1576,10 +1575,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
                 vs.broadcast_use_by_default_when_this_crate_is_imported = true
             }
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
-            Attr::AutoRevealLiterals { strlit, byteslit } => {
-                vs.auto_reveal_strlit |= strlit;
-                vs.auto_reveal_byteslit |= byteslit;
-            }
+            Attr::AutoRevealStrlit(flag) => vs.auto_reveal_strlit = Some(flag),
+            Attr::AutoRevealByteslit(flag) => vs.auto_reveal_byteslit = Some(flag),
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::AllowInSpec => vs.allow_in_spec = true,
             Attr::BitVector => vs.bit_vector = true,
