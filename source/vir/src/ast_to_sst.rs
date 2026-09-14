@@ -1948,6 +1948,7 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((stms, Maybe::Some(Value::Exp(mk_exp(ExpX::Unary(*op, exp))))))
         }
+        ExprX::UnaryOpr(UnaryOpr::AutoRevealLiteral, arg) => expr_to_stm_opt(ctx, state, arg),
         ExprX::UnaryOpr(op, arg) => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, arg)?;
             let exp = to_exp_or_return_never!(exp, stms);

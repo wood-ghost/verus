@@ -288,7 +288,7 @@ pub(crate) enum Attr {
     AllTriggers,
     // exclude a particular function from being chosen in a trigger by triggers_auto
     NoAutoTrigger,
-    // automatically expose selected kinds of literals in an annotated function
+    // automatically expose literals selected by the nearest enclosing attribute
     AutoRevealStrlit(bool),
     AutoRevealByteslit(bool),
     // when used in a ghost context, redirect to a specified spec method
@@ -1072,6 +1072,25 @@ pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
     None
 }
 
+/// Resolve the setting at a literal, including enclosing expressions and blocks.
+/// Unlike definition-only attribute lookup, this must start at the literal's HIR node.
+pub(crate) fn get_auto_reveal_literal_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    hir_id: rustc_hir::HirId,
+    byteslit: bool,
+) -> Result<bool, VirErr> {
+    for id in std::iter::once(hir_id).chain(tcx.hir_parent_iter(hir_id).map(|(id, _)| id)) {
+        for attr in parse_attrs(tcx.hir_attrs(id), None)? {
+            match attr {
+                Attr::AutoRevealStrlit(flag) if !byteslit => return Ok(flag),
+                Attr::AutoRevealByteslit(flag) if byteslit => return Ok(flag),
+                _ => {}
+            }
+        }
+    }
+    Ok(false)
+}
+
 pub(crate) fn migrate_postconditions_walk_parents<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     def_id: rustc_span::def_id::DefId,
@@ -1288,8 +1307,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) reveal_group: bool,
     pub(crate) broadcast_use_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
-    pub(crate) auto_reveal_strlit: Option<bool>,
-    pub(crate) auto_reveal_byteslit: Option<bool>,
     pub(crate) autospec: Option<String>,
     pub(crate) allow_in_spec: bool,
     pub(crate) bit_vector: bool,
@@ -1485,8 +1502,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         reveal_group: false,
         broadcast_use_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
-        auto_reveal_strlit: None,
-        auto_reveal_byteslit: None,
         autospec: None,
         allow_in_spec: false,
         bit_vector: false,
@@ -1575,8 +1590,6 @@ pub(crate) fn get_verifier_attrs_maybe_check(
                 vs.broadcast_use_by_default_when_this_crate_is_imported = true
             }
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
-            Attr::AutoRevealStrlit(flag) => vs.auto_reveal_strlit = Some(flag),
-            Attr::AutoRevealByteslit(flag) => vs.auto_reveal_byteslit = Some(flag),
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
             Attr::AllowInSpec => vs.allow_in_spec = true,
             Attr::BitVector => vs.bit_vector = true,
