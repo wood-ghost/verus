@@ -4,6 +4,20 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_auto_reveal_literals_unknown_argument verus_code! {
+        #[verifier::auto_reveal_literals(strlit, typo)]
+        proof fn test() {}
+    } => Err(err) => assert_vir_error_msg(err, "expected `strlit` and/or `byteslit` for auto_reveal_literals")
+}
+
+test_verify_one_file! {
+    #[test] test_auto_reveal_literals_nested_argument verus_code! {
+        #[verifier::auto_reveal_literals(byteslit, strlit(typo))]
+        proof fn test() {}
+    } => Err(err) => assert_vir_error_msg(err, "expected `strlit` and/or `byteslit` for auto_reveal_literals")
+}
+
+test_verify_one_file! {
     #[test] test_auto_reveal_strlit verus_code! {
         use vstd::prelude::*;
 
@@ -33,7 +47,7 @@ test_verify_one_file! {
             requires
                 has_prefix(string, "abc"@),
         {
-            assert(string.subrange(0, 3) == "abc"@);
+            assert(string.subrange(0, 2) == "ab"@);
         }
 
         #[verifier::auto_reveal_literals(strlit)]

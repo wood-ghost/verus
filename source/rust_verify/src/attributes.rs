@@ -583,7 +583,12 @@ pub(crate) fn parse_attrs(
                                 AttrTree::Fun(_, name, None) if name == "byteslit" => {
                                     byteslit = true
                                 }
-                                _ => {}
+                                _ => {
+                                    return err_span(
+                                        *span,
+                                        "expected `strlit` and/or `byteslit` for auto_reveal_literals",
+                                    );
+                                }
                             }
                         }
                     }
