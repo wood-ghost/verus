@@ -4,6 +4,39 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] iter_lemmas_as_ref_predicate_transport verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test<A>(values: Seq<A>, refs: Seq<&A>, predicate: spec_fn(A) -> bool)
+            requires
+                refs == values.as_ref(),
+                forall|i: int| 0 <= i < refs.len()
+                    ==> predicate(*(#[trigger] refs[i])),
+            ensures
+                forall|i: int| 0 <= i < values.len() ==> predicate(#[trigger] values[i]),
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] iter_lemmas_zip_predicate_transport verus_code! {
+        use vstd::prelude::*;
+
+        proof fn test<A, B>(
+            left: Seq<A>, right: Seq<B>, zipped: Seq<(A, B)>, predicate: spec_fn(A, B) -> bool,
+        )
+            requires
+                zipped == left.zip_truncate(right),
+                forall|i: int| 0 <= i < zipped.len() ==>
+                    predicate((#[trigger] zipped[i]).0, zipped[i].1),
+            ensures
+                forall|i: int| 0 <= i < left.len() && i < right.len()
+                    ==> predicate(#[trigger] left[i], right[i]),
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test1 verus_code! {
         use vstd::seq::*;
         use vstd::seq_lib::*;

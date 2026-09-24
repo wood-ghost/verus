@@ -4,6 +4,92 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] iter_lemmas_zip_all_component_values verus_code! {
+        use vstd::prelude::*;
+
+        fn test(left: &[u8], right: &[u8])
+            requires left.len() == right.len(),
+        {
+            let equal = left.iter().zip(right.iter()).all(
+                |pair: (&u8, &u8)| -> (r: bool)
+                    ensures r == (*pair.0 == *pair.1),
+                { *pair.0 == *pair.1 },
+            );
+            if equal {
+                assert(forall|i: int| 0 <= i < left@.len() ==> left@[i] == right@[i]);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] iter_lemmas_zip_any_common_prefix verus_code! {
+        use vstd::prelude::*;
+
+        // No equal-length requirement: zip only compares the common prefix.
+        fn test(left: &[u8], right: &[u8]) {
+            let different = left.iter().zip(right.iter()).any(
+                |pair: (&u8, &u8)| -> (r: bool)
+                    ensures r == (*pair.0 != *pair.1),
+                { *pair.0 != *pair.1 },
+            );
+            if !different {
+                assert(forall|i: int| 0 <= i < left@.len() && i < right@.len()
+                    ==> left@[i] == right@[i]);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] iter_lemmas_nested_zip_all_masked verus_code! {
+        use vstd::prelude::*;
+
+        fn test(data: &[u8], pattern: &[u8], mask: &[u8])
+            requires pattern.len() <= data.len(), pattern.len() == mask.len(),
+        {
+            let matches = data.iter().zip(pattern.iter()).zip(mask.iter()).all(
+                |pair: ((&u8, &u8), &u8)| -> (r: bool)
+                    ensures r == ((*pair.0.0 & *pair.1) == *pair.0.1),
+                { (*pair.0.0 & *pair.1) == *pair.0.1 },
+            );
+            if matches {
+                assert(forall|i: int| 0 <= i < pattern@.len()
+                    ==> (data@[i] & mask@[i]) == pattern@[i]);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] iter_lemmas_find_first_and_remaining verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn test(values: &[u8]) {
+            let mut it = values.iter();
+            let result = it.find(
+                |value: &&u8| -> (r: bool)
+                    ensures r == (**value == 0),
+                { **value == 0 },
+            );
+            match result {
+                Some(value) => {
+                    let ghost index = values@.len() - it.remaining().len() - 1;
+                    assert(0 <= index < values@.len());
+                    assert(*value == 0 && values@[index] == 0);
+                    assert(forall|i: int| 0 <= i < index ==> values@[i] != 0);
+                },
+                None => {
+                    assert(it.remaining().len() == 0);
+                    assert(forall|i: int| 0 <= i < values@.len() ==> values@[i] != 0);
+                },
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] all_works verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::iter::IteratorSpec;
