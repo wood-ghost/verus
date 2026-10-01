@@ -3,6 +3,358 @@
 mod common;
 use common::*;
 
+// Paired probes for #3014: the true postcondition must verify, and its negation
+// must fail. Tags distinguish source types that may share a logical representation.
+const OPAQUE_RETURN_TAGS: &str = verus_code_str! {
+    use vstd::prelude::*;
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    trait TypeTag {
+        spec fn tag(&self) -> int;
+    }
+    impl TypeTag for u64 { spec fn tag(&self) -> int { 0 } }
+    impl TypeTag for i64 { spec fn tag(&self) -> int { 1 } }
+    impl TypeTag for u32 { spec fn tag(&self) -> int { 2 } }
+    impl TypeTag for u8 { spec fn tag(&self) -> int { 3 } }
+    impl TypeTag for bool { spec fn tag(&self) -> int { 4 } }
+    impl TypeTag for char { spec fn tag(&self) -> int { 5 } }
+    impl TypeTag for *mut u64 { spec fn tag(&self) -> int { 6 } }
+    impl TypeTag for *const u64 { spec fn tag(&self) -> int { 7 } }
+    impl TypeTag for &u64 { spec fn tag(&self) -> int { 8 } }
+    impl TypeTag for Box<u64> { spec fn tag(&self) -> int { 9 } }
+    impl TypeTag for Rc<u64> { spec fn tag(&self) -> int { 10 } }
+    impl TypeTag for Arc<u64> { spec fn tag(&self) -> int { 11 } }
+    impl TypeTag for (u64, bool) { spec fn tag(&self) -> int { 12 } }
+    struct Record { value: i64 }
+    impl TypeTag for Record { spec fn tag(&self) -> int { 13 } }
+    struct Wrapper<T> { value: T }
+    impl<T> TypeTag for Wrapper<T> { spec fn tag(&self) -> int { 14 } }
+    enum Small { A, B }
+    impl TypeTag for Small { spec fn tag(&self) -> int { 15 } }
+};
+
+// EXPECTED_TAG is replaced in the source before invoking Verus. Keep each
+// positive/negative pair separate so accepting a false property is visible.
+macro_rules! test_opaque_return_type {
+    ($positive:ident, $negative:ident, $tag:literal, $program:expr) => {
+        test_verify_one_file_with_options! {
+            #[test] $positive ["vstd"] =>
+                OPAQUE_RETURN_TAGS.to_string()
+                    + &$program.replace("EXPECTED_TAG", stringify!($tag))
+                => Ok(())
+        }
+        test_verify_one_file_with_options! {
+            #[test] $negative ["vstd"] =>
+                OPAQUE_RETURN_TAGS.to_string()
+                    + &$program.replace("== EXPECTED_TAG", "!= EXPECTED_TAG")
+                        .replace("EXPECTED_TAG", stringify!($tag))
+                => Err(err) => assert_one_fails(err)
+        }
+    };
+}
+
+test_opaque_return_type! {
+    probe_literal_ok, probe_literal_rejects_false, 0, verus_code_str! {
+        fn make() -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { 0u64 }
+    }
+}
+
+test_opaque_return_type! {
+    probe_widening_cast_ok, probe_widening_cast_rejects_false, 0, verus_code_str! {
+        fn make(x: u32) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x as u64 }
+    }
+}
+
+test_opaque_return_type! {
+    probe_narrowing_cast_ok, probe_narrowing_cast_rejects_false, 3, verus_code_str! {
+        fn make(x: u64) -> (ret: impl TypeTag)
+            requires x < 256
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x as u8 }
+    }
+}
+
+test_opaque_return_type! {
+    probe_char_cast_ok, probe_char_cast_rejects_false, 2, verus_code_str! {
+        fn make(x: char) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x as u32 }
+    }
+}
+
+test_opaque_return_type! {
+    probe_enum_cast_ok, probe_enum_cast_rejects_false, 0, verus_code_str! {
+        fn make(x: Small) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x as u64 }
+    }
+}
+
+test_opaque_return_type! {
+    probe_bool_not_ok, probe_bool_not_rejects_false, 4, verus_code_str! {
+        fn make(x: bool) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { !x }
+    }
+}
+
+test_opaque_return_type! {
+    probe_arithmetic_ok, probe_arithmetic_rejects_false, 1, verus_code_str! {
+        fn make(x: i64) -> (ret: impl TypeTag)
+            requires 0 <= x < 100
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { -x }
+    }
+}
+
+test_opaque_return_type! {
+    probe_field_ok, probe_field_rejects_false, 1, verus_code_str! {
+        fn make(x: Record) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x.value }
+    }
+}
+
+test_opaque_return_type! {
+    probe_tuple_field_ok, probe_tuple_field_rejects_false, 0, verus_code_str! {
+        fn make(x: (u64, bool)) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x.0 }
+    }
+}
+
+test_opaque_return_type! {
+    probe_generic_field_ok, probe_generic_field_rejects_false, 0, verus_code_str! {
+        fn make(x: Wrapper<u64>) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x.value }
+    }
+}
+
+test_opaque_return_type! {
+    probe_borrow_ok, probe_borrow_rejects_false, 8, verus_code_str! {
+        fn make<'a>(x: &'a u64) -> (ret: impl TypeTag + 'a)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { &*x }
+    }
+}
+
+test_opaque_return_type! {
+    probe_deref_ok, probe_deref_rejects_false, 0, verus_code_str! {
+        fn make(x: &u64) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { *x }
+    }
+}
+
+test_opaque_return_type! {
+    probe_box_new_ok, probe_box_new_rejects_false, 9, verus_code_str! {
+        fn make(x: u64) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { Box::new(x) }
+    }
+}
+
+test_opaque_return_type! {
+    probe_box_deref_ok, probe_box_deref_rejects_false, 0, verus_code_str! {
+        fn make(x: Box<u64>) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { *x }
+    }
+}
+
+test_opaque_return_type! {
+    probe_rc_new_ok, probe_rc_new_rejects_false, 10, verus_code_str! {
+        fn make(x: u64) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { Rc::new(x) }
+    }
+}
+
+test_opaque_return_type! {
+    probe_arc_new_ok, probe_arc_new_rejects_false, 11, verus_code_str! {
+        fn make(x: u64) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { Arc::new(x) }
+    }
+}
+
+test_opaque_return_type! {
+    probe_rc_deref_ok, probe_rc_deref_rejects_false, 0, verus_code_str! {
+        fn make(x: Rc<u64>) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { *x }
+    }
+}
+
+test_opaque_return_type! {
+    probe_arc_deref_ok, probe_arc_deref_rejects_false, 0, verus_code_str! {
+        fn make(x: Arc<u64>) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { *x }
+    }
+}
+
+test_opaque_return_type! {
+    probe_pointer_cast_ok, probe_pointer_cast_rejects_false, 7, verus_code_str! {
+        fn make(x: *mut u64) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x as *const u64 }
+    }
+}
+
+test_opaque_return_type! {
+    probe_if_cast_ok, probe_if_cast_rejects_false, 7, verus_code_str! {
+        fn make(x: *mut u64, y: *const u64, b: bool) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { if b { x as *const u64 } else { y } }
+    }
+}
+
+test_opaque_return_type! {
+    probe_constructor_ok, probe_constructor_rejects_false, 14, verus_code_str! {
+        fn make<T>(x: T) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { Wrapper { value: x } }
+    }
+}
+
+test_opaque_return_type! {
+    probe_array_index_ok, probe_array_index_rejects_false, 0, verus_code_str! {
+        fn make(x: [u64; 1]) -> (ret: impl TypeTag)
+            ensures ret.tag() == EXPECTED_TAG // FAILS
+        { x[0] }
+    }
+}
+
+test_opaque_return_type! {
+    probe_nested_array_ok, probe_nested_array_rejects_false, 0, verus_code_str! {
+        fn make() -> (ret: [impl TypeTag; 1])
+            ensures ret[0].tag() == EXPECTED_TAG // FAILS
+        { [0u64] }
+    }
+}
+
+test_opaque_return_type! {
+    probe_concrete_array_ok, probe_concrete_array_rejects_false, 0, verus_code_str! {
+        fn make() -> (ret: [u64; 1])
+            ensures ret[0].tag() == EXPECTED_TAG // FAILS
+        { [0u64] }
+    }
+}
+
+test_opaque_return_type! {
+    probe_nested_tuple_ok, probe_nested_tuple_rejects_false, 0, verus_code_str! {
+        fn make() -> (ret: (impl TypeTag,))
+            ensures ret.0.tag() == EXPECTED_TAG // FAILS
+        { (0u64,) }
+    }
+}
+
+test_opaque_return_type! {
+    probe_nested_struct_ok, probe_nested_struct_rejects_false, 0, verus_code_str! {
+        fn make() -> (ret: Wrapper<impl TypeTag>)
+            ensures ret.value.tag() == EXPECTED_TAG // FAILS
+        { Wrapper { value: 0u64 } }
+    }
+}
+
+test_opaque_return_type! {
+    probe_nested_option_ok, probe_nested_option_rejects_false, 0, verus_code_str! {
+        fn make() -> (ret: Option<impl TypeTag>)
+            ensures ret is Some, ret->Some_0.tag() == EXPECTED_TAG // FAILS
+        { Some(0u64) }
+    }
+}
+
+test_opaque_return_type! {
+    probe_nested_vec_ok, probe_nested_vec_rejects_false, 0, verus_code_str! {
+        fn make() -> (ret: Vec<impl TypeTag>)
+            ensures ret.len() == 1, ret[0].tag() == EXPECTED_TAG // FAILS
+        { let mut v = Vec::new(); v.push(0u64); v }
+    }
+}
+
+test_opaque_return_type! {
+    probe_nested_slice_ok, probe_nested_slice_rejects_false, 0, verus_code_str! {
+        fn make<'a>(x: &'a [u64]) -> (ret: &'a [impl TypeTag])
+            requires x.len() > 0
+            ensures ret.len() == x.len(), ret[0].tag() == EXPECTED_TAG // FAILS
+        { x }
+    }
+}
+
+test_opaque_return_type! {
+    probe_concrete_vec_ok, probe_concrete_vec_rejects_false, 0, verus_code_str! {
+        fn make() -> (ret: Vec<u64>)
+            ensures ret.len() == 1, ret[0].tag() == EXPECTED_TAG // FAILS
+        { let mut v = Vec::new(); v.push(0u64); v }
+    }
+}
+
+test_opaque_return_type! {
+    probe_concrete_slice_ok, probe_concrete_slice_rejects_false, 0, verus_code_str! {
+        fn make<'a>(x: &'a [u64]) -> (ret: &'a [u64])
+            requires x.len() > 0
+            ensures ret.len() == x.len(), ret[0].tag() == EXPECTED_TAG // FAILS
+        { x }
+    }
+}
+
+// Minimal reproducers, independent of the tag-based probes above.
+test_verify_one_file! {
+    #[test] probe_deref_false_property_minimal verus_code! {
+        trait Tr { spec fn is_ref(&self) -> bool; }
+        impl Tr for u64 { spec fn is_ref(&self) -> bool { false } }
+        impl Tr for &u64 { spec fn is_ref(&self) -> bool { true } }
+
+        fn deref(x: &u64) -> (ret: impl Tr)
+            ensures ret.is_ref() // FAILS
+        {
+            *x
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] probe_box_deref_false_property_minimal ["vstd"] => verus_code! {
+        trait Tr { spec fn is_box(&self) -> bool; }
+        impl Tr for u64 { spec fn is_box(&self) -> bool { false } }
+        impl Tr for Box<u64> { spec fn is_box(&self) -> bool { true } }
+
+        fn unbox(x: Box<u64>) -> (ret: impl Tr)
+            ensures ret.is_box() // FAILS
+        {
+            *x
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] probe_vec_opaque_minimal ["vstd"] => verus_code! {
+        fn empty() -> (ret: Vec<impl Sized>)
+            ensures ret.len() == 0
+        {
+            Vec::<u64>::new()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] probe_slice_opaque_minimal ["vstd"] => verus_code! {
+        fn identity(x: &[u64]) -> (ret: &[impl Sized])
+            ensures ret.len() == x.len()
+        {
+            x
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_return_opaque_type verus_code! {
         use vstd::prelude::*;
