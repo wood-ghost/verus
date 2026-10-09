@@ -316,6 +316,12 @@ pub fn run_verus(
             verus_args.push("--no-cheating".to_string());
         } else if *option == "--output-json" {
             verus_args.push("--output-json".to_string());
+        } else if *option == "--smoke-entry"
+            || *option == "--verify-root"
+            || option.starts_with("--verify-function=")
+            || option.starts_with("--num-threads=")
+        {
+            verus_args.push(option.to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {

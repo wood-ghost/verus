@@ -93,6 +93,7 @@ pub struct ArgsX {
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
+    pub smoke_entry: bool,
     pub rlimit: f32,
     pub smt_options: Vec<(String, String)>,
     pub multiple_errors: u32,
@@ -142,6 +143,7 @@ impl ArgsX {
             time: Default::default(),
             time_expanded: Default::default(),
             output_json: Default::default(),
+            smoke_entry: false,
             rlimit: f32::INFINITY, // NOTE: default rlimit is infinity
             smt_options: Default::default(),
             multiple_errors: Default::default(),
@@ -320,6 +322,7 @@ pub fn parse_args_with_imports(
     const OPT_TIME: &str = "time";
     const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
+    const OPT_SMOKE_ENTRY: &str = "smoke-entry";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
     const OPT_MULTIPLE_ERRORS: &str = "multiple-errors";
@@ -494,6 +497,11 @@ pub fn parse_args_with_imports(
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
     opts.optflag("", OPT_OUTPUT_JSON, "Emit verification results and timing as json");
+    opts.optflag(
+        "",
+        OPT_SMOKE_ENTRY,
+        "Check function-entry contexts for contradictions after ordinary verification (experimental)",
+    );
     opts.optopt(
         "",
         OPT_RLIMIT,
@@ -701,6 +709,7 @@ pub fn parse_args_with_imports(
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
+        smoke_entry: matches.opt_present(OPT_SMOKE_ENTRY),
         rlimit: {
             let rlimit = matches
                 .opt_get::<f32>(OPT_RLIMIT)
@@ -843,6 +852,9 @@ pub fn parse_args_with_imports(
 
     if args.compile && args.no_erasure_check {
         error("--compile and --no-erasure-check are mutually exclusive".to_string())
+    }
+    if args.smoke_entry && args.no_verify {
+        error("--smoke-entry cannot be combined with --no-verify".to_string())
     }
 
     (Arc::new(args), unmatched)

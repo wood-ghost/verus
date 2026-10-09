@@ -3200,6 +3200,7 @@ pub(crate) fn body_stm_to_air(
     let stm = crate::sst_vars::compute_assign_info(&mut state.assign_map, params, local_decls, stm);
 
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
+    let body_stmts_len = stmts.len();
 
     stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
     if state.static_prelude.len() > 0 {
@@ -3213,6 +3214,8 @@ pub(crate) fn body_stm_to_air(
         stmts = new_stmts;
     }
 
+    // Observe the entry boundary without inserting anything into ordinary AIR.
+    let entry_prefix_len = stmts.len() - body_stmts_len;
     let assertion = one_stmt(stmts);
 
     if !is_integer_ring {
@@ -3291,14 +3294,19 @@ pub(crate) fn body_stm_to_air(
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = vec![Arc::new(CommandX::CheckValid(query))];
-        state.commands.push(CommandsWithContextX::new(
+        let mut command = CommandsWithContextX::new(
             ctx.fun.as_ref().expect("function expected here").current_fun.clone(),
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
             if is_nonlinear { ProverChoice::Nonlinear } else { ProverChoice::DefaultProver },
             is_integer_ring || is_nonlinear,
-        ));
+        );
+        if !is_nonlinear {
+            Arc::get_mut(&mut command).expect("new command").function_entry_prefix_len =
+                Some(entry_prefix_len);
+        }
+        state.commands.push(command);
     }
     Ok((state.commands, state.snap_map))
 }

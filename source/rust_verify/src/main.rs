@@ -547,6 +547,16 @@ pub fn main() {
         let mut out: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
         out.insert("func-details".to_string(), serde_json::Value::Object(func_details));
         out.insert("verification-results".to_string(), res);
+        if verifier.args.smoke_entry {
+            out.insert(
+                "smoke-results".to_string(),
+                serde_json::json!({
+                    "scope": "function-entry",
+                    "completed": verifier.smoke_entry_complete,
+                    "checks": verifier.smoke_entry_results,
+                }),
+            );
+        }
         if let Some(times_ms) = times_ms_json_data {
             out.insert("times-ms".to_string(), times_ms);
         }

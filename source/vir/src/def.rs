@@ -1014,6 +1014,10 @@ pub struct CommandsWithContextX {
     pub commands: Commands,
     pub prover_choice: ProverChoice,
     pub skip_recommends: bool,
+    /// Side metadata for the outer default-prover body query: the number of AIR
+    /// statements before the translated SST body. Ordinary verification ignores
+    /// this field; it neither adds a statement nor allocates an assertion ID.
+    pub function_entry_prefix_len: Option<usize>,
 }
 
 impl CommandsWithContextX {
@@ -1030,6 +1034,7 @@ impl CommandsWithContextX {
             commands,
             prover_choice,
             skip_recommends,
+            function_entry_prefix_len: None,
         })
     }
 }
