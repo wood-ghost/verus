@@ -6,6 +6,9 @@ use crate::debugger::Debugger;
 use crate::external::VerifOrExternal;
 use crate::externs::VerusExterns;
 use crate::rust_to_vir_base::mk_crate_id;
+use crate::smoke::{
+    EntryInput, EntryJob, EntryLogs, EntryResult, EntryStatus, ProbeKind, SmokeObserver,
+};
 use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::{HashMapAbsorbWith, error};
@@ -73,11 +76,17 @@ fn create_observer(name: &str) -> vir::vir_observer::Observers {
     }
 }
 
-fn create_observer_from_args(names: &[String]) -> vir::vir_observer::Observers {
+fn create_observer_from_args(names: &[String], smoke: bool) -> vir::vir_observer::Observers {
     if names.len() > 1 {
         panic!("only one observer may be specified at a time; got: {:?}", names);
     }
-    names.first().map_or_else(Default::default, |n| create_observer(n))
+    let mut observers = names.first().map_or_else(Default::default, |n| create_observer(n));
+    if smoke {
+        observers.vir = Some(std::rc::Rc::new(std::cell::RefCell::new(SmokeObserver::new(
+            observers.vir.take(),
+        ))));
+    }
+    observers
 }
 
 fn emit_observer_summaries(any: &dyn std::any::Any, reporter: &impl air::messages::Diagnostics) {
@@ -383,6 +392,12 @@ pub struct Verifier {
 
     /// Details about each function
     pub func_details: HashMap<Fun, FuncDetails>,
+    pub smoke_entry_results: Vec<EntryResult>,
+    pub smoke_entry_complete: bool,
+    // AIR contains type-erased diagnostic payloads. If an ordinary worker
+    // unwinds, its entire verifier (including these deferred jobs) is discarded;
+    // we never resume a partly constructed job after catch_unwind.
+    smoke_entry_jobs: std::panic::AssertUnwindSafe<Vec<EntryJob>>,
     /// Errors to report after verification has run
     deferred_errors: Vec<VirErr>,
 
@@ -578,6 +593,9 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: HashMap::new(),
+            smoke_entry_results: Vec::new(),
+            smoke_entry_complete: false,
+            smoke_entry_jobs: std::panic::AssertUnwindSafe(Vec::new()),
             deferred_errors: Vec::new(),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
@@ -627,6 +645,9 @@ impl Verifier {
             func_times: HashMap::new(),
 
             func_details: HashMap::new(),
+            smoke_entry_results: Vec::new(),
+            smoke_entry_complete: false,
+            smoke_entry_jobs: std::panic::AssertUnwindSafe(Vec::new()),
             deferred_errors: Vec::new(),
 
             via_cargo_args: self.via_cargo_args.clone(),
@@ -660,6 +681,8 @@ impl Verifier {
         self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
         self.func_details.absorb_with(other.func_details, |lhs, rhs| lhs.absorb(rhs));
+        self.smoke_entry_jobs.extend(other.smoke_entry_jobs.0);
+        self.smoke_entry_results.extend(other.smoke_entry_results);
         self.deferred_errors.extend(other.deferred_errors);
     }
 
@@ -1144,8 +1167,7 @@ impl Verifier {
             not_skipped: false,
             used_axioms: None,
         };
-        let CommandsWithContextX { context, commands, prover_choice, skip_recommends: _ } =
-            &*commands_with_context;
+        let CommandsWithContextX { context, commands, prover_choice, .. } = &*commands_with_context;
         let context = context.with_desc_prefix(desc_prefix);
         if commands.len() > 0 {
             air_context.blank_line();
@@ -1189,7 +1211,7 @@ impl Verifier {
         format!("{}{}{}{}", rerun_msg, count_msg, expand_msg, suffix,)
     }
 
-    fn set_rlimit(air_context: &mut air::context::Context, rlimit: f32) {
+    pub(crate) fn set_rlimit(air_context: &mut air::context::Context, rlimit: f32) {
         let per_second = match air_context.get_solver() {
             air::context::SmtSolver::Z3 => RLIMIT_PER_SECOND_Z3,
             air::context::SmtSolver::Cvc5 => RLIMIT_PER_SECOND_CVC5,
@@ -1216,6 +1238,7 @@ impl Verifier {
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
         prover_choice: vir::def::ProverChoice,
+        capture_prelude: Option<&mut Commands>,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context =
             air::context::Context::new(message_interface.clone(), self.args.solver);
@@ -1298,12 +1321,16 @@ impl Verifier {
             if self.args.axiom_usage_info {
                 air_context.enable_usage_info();
             }
+            let prelude = ctx.prelude(prelude_config);
             self.run_command_batch(
                 bucket_id,
                 diagnostics,
                 &mut air_context,
-                &CommandBatch::new("Prelude", ctx.prelude(prelude_config)),
+                &CommandBatch::new("Prelude", prelude.clone()),
             );
+            if let Some(captured) = capture_prelude {
+                *captured = prelude;
+            }
         }
 
         air_context.blank_line();
@@ -1360,6 +1387,7 @@ impl Verifier {
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_file_name,
             prover_choice,
+            None,
         )?;
 
         // Attach the same shared observer objects to the spinoff context
@@ -1410,6 +1438,7 @@ impl Verifier {
         } else {
             None
         };
+        let mut smoke_prelude = Arc::new(vec![]);
         let mut air_context = self.new_air_context_with_prelude(
             ctx,
             message_interface.clone(),
@@ -1420,6 +1449,7 @@ impl Verifier {
             PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_all_file_name.as_ref(),
             vir::def::ProverChoice::DefaultProver,
+            (self.args.smoke_entry || self.args.smoke_guards).then_some(&mut smoke_prelude),
         )?;
 
         // Attach the same shared observer object to air::Context via its per-trait
@@ -1577,6 +1607,28 @@ impl Verifier {
                             QueryOp::Body(Style::CheckApiSafety) => MessageLevel::Error,
                         };
                         let function = &op.get_function();
+                        if (self.args.smoke_entry || self.args.smoke_guards)
+                            && matches!(query_op, QueryOp::Body(Style::Normal))
+                            && !profile_rerun
+                            && matches!(
+                                function.x.mode,
+                                vir::ast::Mode::Exec | vir::ast::Mode::Proof
+                            )
+                            && matches!(function.x.item_kind, vir::ast::ItemKind::Function)
+                            && self
+                                .user_filter
+                                .as_ref()
+                                .unwrap()
+                                .includes_function(&function.x.name)
+                        {
+                            self.capture_smoke_entry(
+                                function,
+                                commands_with_context_list,
+                                &smoke_prelude,
+                                &bucket_context,
+                                function_opgen.ctx(),
+                            );
+                        }
                         let is_recommend = query_op.is_recommend();
                         self.expand_flag = query_op.is_expanded();
 
@@ -1967,9 +2019,17 @@ impl Verifier {
         let (time_smt_init, time_smt_run) = air_context.get_time();
         let rlimit_count = air_context.get_rlimit_count();
 
-        // Emit observer summaries as diagnostic notes. Only one underlying object
-        // exists; try each handle (a single-trait observer populates only one).
-        if let Some(obs_cell) = &ctx.observer {
+        // Unwrap the passive collector so an AIR-only or result-only delegate
+        // is still selected when it has no VIR handle.
+        let observer = ctx.observer.as_ref().and_then(|o| {
+            let borrow = o.borrow();
+            if let Some(smoke) = borrow.as_any().downcast_ref::<SmokeObserver>() {
+                smoke.delegate.clone()
+            } else {
+                Some(o.clone())
+            }
+        });
+        if let Some(obs_cell) = &observer {
             emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
         } else if let Some(obs_cell) = &ctx.air_observer {
             emit_observer_summaries(obs_cell.borrow().as_any(), reporter);
@@ -2043,7 +2103,10 @@ impl Verifier {
             fndef_types,
             resolved_typs.unwrap(),
             self.args.debugger,
-            create_observer_from_args(&self.args.observers),
+            create_observer_from_args(
+                &self.args.observers,
+                self.args.smoke_entry || self.args.smoke_guards,
+            ),
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
@@ -2690,6 +2753,206 @@ impl Verifier {
         }
 
         Ok(())
+    }
+
+    /// Record references only. In particular, do not rerun VIR expression
+    /// translation or introduce commands into the ordinary AIR context.
+    fn capture_smoke_entry(
+        &mut self,
+        function: &vir::sst::FunctionSst,
+        commands: &[CommandsWithContext],
+        prelude: &Commands,
+        background: &[CommandBatch],
+        ctx: &vir::context::Ctx,
+    ) {
+        // The observer identifies the outer query by Arc identity, not by
+        // searching for assertions, source text, or command descriptions.
+        let body = ctx.observer.as_ref().and_then(|o| {
+            let observer = o.borrow();
+            let smoke = observer.as_any().downcast_ref::<SmokeObserver>()?;
+            commands.iter().flat_map(|c| c.commands.iter()).find_map(|c| match &**c {
+                CommandX::CheckValid(query) => smoke.body(query).cloned(),
+                _ => None,
+            })
+        });
+        let input = (|| {
+            if self.args.debugger {
+                return Err(
+                    "entry-context smoke checks do not support interactive debugging".to_string()
+                );
+            }
+            let source_function = ctx
+                .func_map
+                .get(&function.x.name)
+                .ok_or_else(|| "source function metadata unavailable".to_string())?;
+            if source_function.x.atomic_update.is_some() {
+                return Err("atomic-update entry prologues are not supported yet".to_string());
+            }
+            let body = body
+                .as_ref()
+                .ok_or_else(|| "no supported default-prover function-entry query".to_string())?;
+            Ok(EntryInput {
+                query: body.query.clone(),
+                prefix_len: body.prefix_len,
+                prelude: prelude.clone(),
+                background: background.iter().map(|batch| batch.commands.clone()).collect(),
+                rlimit_override: if matches!(self.args.solver, SmtSolver::Z3) {
+                    function.x.attrs.rlimit
+                } else {
+                    None
+                },
+            })
+        })();
+        if self.args.smoke_entry {
+            self.smoke_entry_jobs.push(EntryJob {
+                function: function.x.name.clone(),
+                span: function.span.clone(),
+                kind: ProbeKind::FunctionEntry,
+                clause: None,
+                condition: None,
+                input: input.clone(),
+            });
+        }
+        if self.args.smoke_guards {
+            let guards = if let Some(body) = body {
+                body.guards
+            } else {
+                // Specialized modes have no observed default-prover query.
+                // Retain explicit candidates as skipped rather than silently
+                // treating absence of a query as a clean guard check.
+                function
+                    .x
+                    .exec_proof_check
+                    .iter()
+                    .flat_map(|check| check.post_condition.ens_exps.iter().enumerate())
+                    .filter_map(|(clause, exp)| {
+                        vir::vir_observer::postcondition_implication(exp).map(|(guard, _)| {
+                            crate::smoke::Guard {
+                                clause,
+                                span: guard.span.clone(),
+                                condition: Err(
+                                    "no supported default-prover guard query".to_string()
+                                ),
+                            }
+                        })
+                    })
+                    .collect()
+            };
+            for guard in guards {
+                let (condition, guard_input) = match guard.condition {
+                    Ok(condition) => (Some(condition), input.clone()),
+                    Err(reason) => (None, Err(reason)),
+                };
+                self.smoke_entry_jobs.push(EntryJob {
+                    function: function.x.name.clone(),
+                    span: guard.span,
+                    kind: ProbeKind::PostconditionGuard,
+                    clause: Some(guard.clause),
+                    condition,
+                    input: guard_input,
+                });
+            }
+        }
+    }
+
+    fn smoke_entry_logs(&mut self, index: usize, kind: ProbeKind) -> Result<EntryLogs, VirErr> {
+        // Disjoint filenames: never overwrite an ordinary query's evidence.
+        let kind = match kind {
+            ProbeKind::FunctionEntry => "entry",
+            ProbeKind::PostconditionGuard => "guard",
+        };
+        let prefix = format!("_smoke_{kind}_{index:04}");
+        let mut logs = EntryLogs::default();
+        if self.args.log_all || self.args.log_args.log_air_initial {
+            logs.air = Some(self.create_log_file(None, &format!("{prefix}.air"))?);
+        }
+        if self.args.log_all || self.args.log_args.log_air_final {
+            logs.air_final = Some(self.create_log_file(None, &format!("{prefix}.air-final"))?);
+        }
+        if self.args.log_all || self.args.log_args.log_smt {
+            logs.smt = Some(self.create_log_file(None, &format!("{prefix}.smt2"))?);
+        }
+        if self.args.log_all || self.args.log_args.log_smt_transcript {
+            logs.transcript =
+                Some(self.create_log_file(None, &format!("{prefix}.smt-transcript"))?);
+        }
+        Ok(logs)
+    }
+
+    /// Called only after all ordinary workers, followups, and deferred errors.
+    /// Neither AIR's normal result reducer nor its ordinary counters are used.
+    fn run_smoke_entries(&mut self, reporter: &impl Diagnostics) {
+        let mut jobs = std::mem::take(&mut self.smoke_entry_jobs.0);
+        jobs.sort_by_key(|job| (fun_as_friendly_rust_name(&job.function), job.clause));
+        for (index, mut job) in jobs.into_iter().enumerate() {
+            if self.encountered_vir_error {
+                job.input = Err("ordinary verification did not complete".to_string());
+            }
+            let logs = if job.input.is_ok() {
+                self.smoke_entry_logs(index, job.kind)
+            } else {
+                Ok(EntryLogs::default())
+            };
+            let result = match logs {
+                Ok(logs) => crate::smoke::run_entry(&job, &self.args, logs),
+                Err(error) => EntryResult {
+                    function: fun_as_friendly_rust_name(&job.function),
+                    location: job.span.as_string.clone(),
+                    kind: job.kind,
+                    clause: job.clause,
+                    status: EntryStatus::Error,
+                    detail: Some(format!("could not create smoke logs: {error:?}")),
+                },
+            };
+            match result.status {
+                EntryStatus::FalseProved => reporter.report(
+                    &warning(
+                        &job.span,
+                        match job.kind {
+                            ProbeKind::FunctionEntry => {
+                                "smoke test detected an inconsistent function-entry context"
+                            }
+                            ProbeKind::PostconditionGuard => {
+                                "smoke test detected an unreachable postcondition guard"
+                            }
+                        },
+                    )
+                    .to_any(),
+                ),
+                EntryStatus::FalseNotProved => (),
+                _ => reporter.report(
+                    &note(
+                        &job.span,
+                        format!(
+                            "smoke check: {:?}{}",
+                            result.status,
+                            result.detail.as_ref().map(|s| format!(": {s}")).unwrap_or_default()
+                        ),
+                    )
+                    .to_any(),
+                ),
+            }
+            self.smoke_entry_results.push(result);
+        }
+        self.smoke_entry_complete = !self.encountered_vir_error;
+        if !self.args.output_json {
+            let detected = self
+                .smoke_entry_results
+                .iter()
+                .filter(|r| r.status == EntryStatus::FalseProved)
+                .count();
+            let not_proved = self
+                .smoke_entry_results
+                .iter()
+                .filter(|r| r.status == EntryStatus::FalseNotProved)
+                .count();
+            println!(
+                "smoke results:: {} detected, {} false goals not proved, {} unchecked or inconclusive",
+                detected,
+                not_proved,
+                self.smoke_entry_results.len() - detected - not_proved,
+            );
+        }
     }
 
     pub(crate) fn verify_crate<'tcx>(
@@ -3471,6 +3734,9 @@ impl VerifierCallbacksEraseMacro {
                     ""
                 }
             );
+        }
+        if self.verifier.args.smoke_entry || self.verifier.args.smoke_guards {
+            self.verifier.run_smoke_entries(&reporter);
         }
     }
 }

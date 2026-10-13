@@ -3229,10 +3229,19 @@ pub(crate) fn body_stm_to_air(
     let initial_sid = Arc::new("0_entry".to_string());
 
     let mut ens_exprs: Vec<(Span, Expr, Option<ProofNoteLabel>)> = Vec::new();
-    for ens in post_condition.ens_exps.iter() {
+    for (clause, ens) in post_condition.ens_exps.iter().enumerate() {
         let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
         let note = sst_exp_get_proof_note(ens);
-        let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
+        let e = if let Some((lhs, rhs)) = crate::vir_observer::postcondition_implication(ens) {
+            // Exactly the same child lowering order and constructor as the
+            // BinaryOp::Implies arm of exp_to_expr. Observe, never retranslate.
+            let lh = exp_to_expr(ctx, lhs, expr_ctxt)?;
+            let rh = exp_to_expr(ctx, rhs, expr_ctxt)?;
+            ctx.notify(|obs| obs.on_postcondition_guard(clause, lhs, &lh));
+            mk_implies(&lh, &rh)
+        } else {
+            exp_to_expr(ctx, ens, expr_ctxt)?
+        };
         ens_exprs.push((ens.span.clone(), e, note));
     }
 
@@ -3275,6 +3284,7 @@ pub(crate) fn body_stm_to_air(
     let stm = crate::sst_vars::compute_assign_info(&mut state.assign_map, params, local_decls, stm);
 
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
+    let body_stmts_len = stmts.len();
 
     stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
     if state.static_prelude.len() > 0 {
@@ -3288,6 +3298,8 @@ pub(crate) fn body_stm_to_air(
         stmts = new_stmts;
     }
 
+    // Observe the entry boundary without inserting anything into ordinary AIR.
+    let entry_prefix_len = stmts.len() - body_stmts_len;
     let assertion = one_stmt(stmts);
 
     if !is_integer_ring {
@@ -3365,15 +3377,26 @@ pub(crate) fn body_stm_to_air(
         }
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+        if !is_nonlinear {
+            ctx.notify(|obs| {
+                obs.on_body_query_lowered(
+                    &ctx.fun.as_ref().expect("function expected here").current_fun,
+                    &query,
+                    entry_prefix_len,
+                    params,
+                )
+            });
+        }
         let commands = vec![Arc::new(CommandX::CheckValid(query))];
-        state.commands.push(CommandsWithContextX::new(
+        let command = CommandsWithContextX::new(
             ctx.fun.as_ref().expect("function expected here").current_fun.clone(),
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
             if is_nonlinear { ProverChoice::Nonlinear } else { ProverChoice::DefaultProver },
             is_integer_ring || is_nonlinear,
-        ));
+        );
+        state.commands.push(command);
     }
     // Notify observer of binder-originated local declarations (including Skolemized
     // copies): quantifier binders and choose binders alike.

@@ -69,15 +69,55 @@ pub trait VirObserver: Any {
     fn on_body_lowering_start(&mut self) {}
     fn on_function_lowered(&mut self) {}
 
+    /// The antecedent of a top-level implication in a function postcondition.
+    /// `guard_air` is the result of the existing expression lowering, captured
+    /// before implication simplification. The callback must not re-lower it.
+    fn on_postcondition_guard(
+        &mut self,
+        _clause: usize,
+        _guard: &Exp,
+        _guard_air: &air::ast::Expr,
+    ) {
+    }
+
+    /// Completed outer default-prover body query, before AIR's own lowering.
+    /// The first `entry_prefix_len` statements are entry setup. Query locals
+    /// include the original requirements and type facts. Subsidiary queries
+    /// do not produce this callback; execution-time background is owned by
+    /// the verifier driver, not this lowering context.
+    fn on_body_query_lowered(
+        &mut self,
+        _function: &crate::ast::Fun,
+        _query: &air::ast::Query,
+        _entry_prefix_len: usize,
+        _params: &crate::sst::Pars,
+    ) {
+    }
+
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
+/// Peel diagnostic-only wrappers when identifying an explicit implication.
+/// This inspects existing SST without allocating ordinary names or IDs.
+pub fn postcondition_implication(exp: &Exp) -> Option<(&Exp, &Exp)> {
+    use crate::ast::UnaryOpr;
+    use crate::sst::{BinaryOp, ExpX};
+    match &exp.x {
+        ExpX::UnaryOpr(UnaryOpr::ProofNote(_) | UnaryOpr::CustomErr(_), inner) => {
+            postcondition_implication(inner)
+        }
+        ExpX::Binary(BinaryOp::Implies, lhs, rhs) => Some((lhs, rhs)),
+        _ => None,
+    }
+}
+
 /// Registry of per-trait observer handles: independent trait-object views of
 /// (up to) one shared observer object. Each field is `Some` only if the observer
-/// implements that trait, so a consumer couples nothing it does not use. All
-/// populated fields point at the same underlying `RefCell` (via `Rc` unsizing
-/// coercion at the factory), so callbacks mutate one shared object.
+/// implements that trait, so a consumer couples nothing it does not use. The
+/// factory normally uses views of the same `RefCell`. A passive collector may
+/// wrap the VIR handle while forwarding callbacks to the original observer;
+/// its AIR and query-result handles continue to reference the original object.
 #[derive(Clone, Default)]
 pub struct Observers {
     pub vir: Option<std::rc::Rc<std::cell::RefCell<dyn VirObserver>>>,
