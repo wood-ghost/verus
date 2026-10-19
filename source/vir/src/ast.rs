@@ -85,6 +85,8 @@ pub enum VarIdentDisambiguate {
     ExpandErrorsDecl(u64),
     BitVectorToAirDecl(u64),
     ResInfTemp(u64),
+    // Bound index in the content comparison generated for a string pattern.
+    PatternStrIndex,
 }
 
 /// A local variable name, possibly renamed for disambiguation

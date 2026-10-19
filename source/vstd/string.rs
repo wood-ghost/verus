@@ -324,11 +324,34 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
         #[trigger] s@.index(i) == strslice_get_char(s, i),
 ;
 
+/// Make the view bridge available when a generated string-pattern comparison
+/// mentions the primitive length operation rather than the sequence view.
+#[cfg(not(verus_verify_core))]
+pub broadcast proof fn lemma_strslice_len_view(s: &str)
+    ensures
+        #[trigger] strslice_len(s) == s@.len(),
+{
+    broadcast use axiom_str_literal_len;
+
+}
+
+/// The reverse trigger of axiom_str_literal_get_char, proved from that axiom.
+#[cfg(not(verus_verify_core))]
+pub broadcast proof fn lemma_strslice_get_char_view(s: &str, i: int)
+    ensures
+        #[trigger] strslice_get_char(s, i) == s@[i],
+{
+    broadcast use axiom_str_literal_get_char;
+
+}
+
 #[cfg(all(not(feature = "alloc"), not(verus_verify_core)))]
 pub broadcast group group_string_axioms {
     axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
+    lemma_strslice_len_view,
+    lemma_strslice_get_char_view,
     is_ascii_spec_bytes,
     is_ascii_concat,
 }
@@ -338,6 +361,8 @@ pub broadcast group group_string_axioms {
     axiom_new_strlit_view_id,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
+    lemma_strslice_len_view,
+    lemma_strslice_get_char_view,
     to_string_from_display_ensures_for_str,
     is_ascii_spec_bytes,
     is_ascii_concat,

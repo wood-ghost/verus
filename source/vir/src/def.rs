@@ -1301,6 +1301,7 @@ pub fn unique_var_name(
             out.push_str(RES_INF_TEMP_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
+        VarIdentDisambiguate::PatternStrIndex => out.push_str("$pattern_str_index"),
     }
     out
 }

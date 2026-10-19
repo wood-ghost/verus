@@ -202,8 +202,8 @@ fn check_trigger_expr(
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-        ExpX::Binary(BinaryOp::Bitwise(_) | BinaryOp::Index(_), _, _) => {}
-        ExpX::Unary(UnaryOp::BitNot(_), _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_) | BinaryOp::Index(_) | BinaryOp::StrGetChar, _, _) => {}
+        ExpX::Unary(UnaryOp::BitNot(_) | UnaryOp::StrLen, _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
         ExpX::Unary(UnaryOp::IeeeFloat(_), _) | ExpX::Binary(BinaryOp::IeeeFloat(_), _, _) => {}

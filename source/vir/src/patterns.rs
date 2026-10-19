@@ -1,7 +1,7 @@
 use crate::ast::*;
 use crate::ast_util::{
-    array_kind_of_typ, bool_typ, conjoin, disjoin, if_then_else, int_typ, mk_eq, mk_ineq,
-    mk_int_lit_from_usize, place_to_spec_expr,
+    array_kind_of_typ, bool_typ, conjoin, disjoin, if_then_else, int_typ, mk_eq, mk_implies,
+    mk_ineq, mk_int_lit_from_usize, place_to_spec_expr, undecorate_typ, wrap_in_trigger,
 };
 use crate::context::GlobalCtx;
 use crate::def::Spanned;
@@ -77,6 +77,44 @@ fn read_place(place: &Place) -> Expr {
             UnfinalizedReadKind { preliminary_kind: ReadKind::ImmutBor, id: 0 },
         ),
     )
+}
+
+/// Rust string patterns compare contents, not the identity of the abstract str value.
+/// Use the existing string operations rather than asserting global extensionality.
+fn string_pattern_eq(span: &Span, lhs: &Expr, rhs: &Expr) -> Expr {
+    let len =
+        |s: &Expr| SpannedTyped::new(span, &int_typ(), ExprX::Unary(UnaryOp::StrLen, s.clone()));
+    let lhs_len = len(lhs);
+    let rhs_len = len(rhs);
+    let name = VarIdent(Arc::new("i".to_string()), VarIdentDisambiguate::PatternStrIndex);
+    let index = SpannedTyped::new(span, &int_typ(), ExprX::Var(name.clone()));
+    let char_at = |s: &Expr| {
+        SpannedTyped::new(
+            span,
+            &Arc::new(TypX::Int(IntRange::Char)),
+            ExprX::Binary(BinaryOp::StrGetChar, s.clone(), index.clone()),
+        )
+    };
+    let lhs_char = wrap_in_trigger(&char_at(lhs));
+    let rhs_char = char_at(rhs);
+    let bounds = conjoin(
+        span,
+        &vec![
+            mk_ineq(span, &mk_int_lit_from_usize(span, 0), &index, InequalityOp::Le),
+            mk_ineq(span, &index, &lhs_len, InequalityOp::Lt),
+        ],
+    );
+    let body = mk_implies(span, &bounds, &mk_eq(span, &lhs_char, &rhs_char));
+    let chars_equal = SpannedTyped::new(
+        span,
+        &bool_typ(),
+        ExprX::Quant(
+            Quant { quant: air::ast::Quant::Forall },
+            Arc::new(vec![Arc::new(VarBinderX { name, a: int_typ() })]),
+            body,
+        ),
+    );
+    conjoin(span, &vec![mk_eq(span, &lhs_len, &rhs_len), chars_equal])
 }
 
 fn err_if_bad_binding(span: &Span, in_immut: bool, by_ref: ByRef) -> Result<(), VirErr> {
@@ -185,7 +223,11 @@ fn pattern_to_exprs_rec(
         }
         PatternX::Expr(e) => {
             let expr = read_place(&place);
-            Ok(mk_eq(&pattern.span, &expr, e))
+            if matches!(&*undecorate_typ(&e.typ), TypX::Primitive(Primitive::StrSlice, _)) {
+                Ok(string_pattern_eq(&pattern.span, &expr, e))
+            } else {
+                Ok(mk_eq(&pattern.span, &expr, e))
+            }
         }
         PatternX::Range(lower, upper) => {
             let expr = read_place(&place);

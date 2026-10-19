@@ -1656,6 +1656,85 @@ pub(crate) fn ty_has_smt_equality<'tcx>(
     ty_pair_has_smt_equality(bctx, span, ty, ty)
 }
 
+/// Constant patterns use Rust's structural matching, not arbitrary executable
+/// PartialEq implementations. Accept additional transparent structural types only
+/// when every field can still be compared using VIR equality.
+pub(crate) fn ty_supports_pattern_equality<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Result<bool, VirErr> {
+    // String patterns are lowered separately to content equality in patterns.rs.
+    let vir_ty = bctx.mid_ty_to_vir(span, &ty)?;
+    if matches!(&*undecorate_typ(&vir_ty), TypX::Primitive(Primitive::StrSlice, _)) {
+        return Ok(true);
+    }
+    pattern_fields_have_smt_equality(bctx, span, ty, &mut Vec::new())
+}
+
+fn pattern_fields_have_smt_equality<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    ty: rustc_middle::ty::Ty<'tcx>,
+    visiting: &mut Vec<DefId>,
+) -> Result<bool, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    match ty.kind() {
+        TyKind::Bool | TyKind::Char | TyKind::Int(_) | TyKind::Uint(_) => Ok(true),
+        TyKind::Ref(_, inner, Mutability::Not) => {
+            pattern_fields_have_smt_equality(bctx, span, *inner, visiting)
+        }
+        TyKind::Tuple(fields) => {
+            for field in fields.iter() {
+                if !pattern_fields_have_smt_equality(bctx, span, field, visiting)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        TyKind::Adt(adt, args) => {
+            // PhantomData has no value fields, regardless of its type parameter.
+            if verus_items::get_rust_item(tcx, adt.did()) == Some(RustItem::PhantomData) {
+                return Ok(true);
+            }
+            let Some(local_id) = adt.did().as_local() else {
+                // Preserve the existing requirements for imported types, whose
+                // Verus field modes/representation are not available in local HIR.
+                return ty_has_smt_equality(bctx, span, ty);
+            };
+            let attrs = tcx.hir_attrs(tcx.local_def_id_to_hir_id(local_id));
+            let vattrs = get_verifier_attrs(attrs, None)?;
+            if adt.is_union()
+                || vattrs.external_body
+                || crate::attributes::get_mode(Mode::Exec, attrs) != Mode::Exec
+                || !ty.is_structural_eq_shallow(tcx)
+                || visiting.contains(&adt.did())
+            {
+                return Ok(false);
+            }
+            visiting.push(adt.did());
+            for field in adt.all_fields() {
+                let field_id = tcx.local_def_id_to_hir_id(field.did.expect_local());
+                let field_ty = tcx.normalize_erasing_regions(
+                    TypingEnv::post_analysis(tcx, bctx.fun_id),
+                    field.ty(tcx, args),
+                );
+                if crate::attributes::get_mode(Mode::Exec, tcx.hir_attrs(field_id)) != Mode::Exec
+                    || !pattern_fields_have_smt_equality(bctx, span, field_ty, visiting)?
+                {
+                    visiting.pop();
+                    return Ok(false);
+                }
+            }
+            visiting.pop();
+            Ok(true)
+        }
+        // In particular, never accept floats or nested strings using raw SMT equality.
+        TyKind::Float(_) | TyKind::Str => Ok(false),
+        _ => ty_has_smt_equality(bctx, span, ty),
+    }
+}
+
 pub(crate) fn ty_pair_has_smt_equality<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
