@@ -311,3 +311,64 @@ test_verify_one_file! {
         assert!(err.warnings[2].message.contains("2 warnings emitted"));
     }
 }
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    unary_minus_fail_1 verus_code! {
+        proof fn bad(x: int) by(integer_ring)
+            ensures
+                x * (i8::MIN as int) == x * 128 // FAILS
+        { }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    unary_minus_ok verus_code! {
+        proof fn bad(x: int) by(integer_ring)
+            ensures
+                x * (i8::MIN as int) + 64 * x + 64 * x == 0
+        { }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    overflow_bad1_issue3181 verus_code! {
+        #[verifier::integer_ring]
+        proof fn bad()
+            ensures
+                65536int * 65536int == 0, // FAILS
+        {
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    overflow_bad2_issue3181 verus_code! {
+        #[verifier::integer_ring]
+        proof fn bad2(x: int)
+            ensures
+                x * (2147483647int + 1int) == x * (0int - 2147483648int), // FAILS
+        {
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    overflow_good_issue3181 verus_code! {
+        #[verifier::integer_ring]
+        proof fn good()
+            ensures
+                65536int * 65536int == 4294967296,
+        {
+        }
+    } => Ok(())
+}

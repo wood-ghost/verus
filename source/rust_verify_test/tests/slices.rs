@@ -1100,6 +1100,53 @@ test_verify_one_bv_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] test_slice_starts_with_asymmetric_eq verus_code! {
+        // Expected results checked by executing these cases with Rust 1.98.1.
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct S(pub u8);
+
+        // Deliberately asymmetric so reversing the eq arguments changes the result.
+        impl PartialEq for S {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        fn test_equal_length() {
+            let slice: &[S] = &[S(0), S(0)];
+            let needle: &[S] = &[S(1), S(1)];
+            let cmp01 = slice.starts_with(needle);
+            let cmp10 = needle.starts_with(slice);
+
+            // needle == slice
+            assert(!cmp01);
+            assert(cmp10);
+        }
+
+        fn test_shorter_prefix() {
+            let slice: &[S] = &[S(2), S(3), S(0)];
+            let matches = slice.starts_with(&[S(1), S(2)]);
+            let mismatches = slice.starts_with(&[S(1), S(4)]);
+
+            assert(matches);
+            assert(!mismatches);
+        }
+    } => Ok(())
+}
+
 test_verify_one_bv_file! {
     #[test] test_slice_ends_with verus_code! {
         use vstd::prelude::*;
@@ -1129,6 +1176,53 @@ test_verify_one_bv_file! {
         fn test_empty_slice_ends_with_empty() {
             let v: &[u8] = &[];
             assert(v.ends_with(&[]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_ends_with_asymmetric_eq verus_code! {
+        // Expected results checked by executing these cases with Rust 1.98.1.
+        use vstd::prelude::*;
+        use vstd::std_specs::cmp::PartialEqSpecImpl;
+
+        pub struct S(pub u8);
+
+        // Deliberately asymmetric so reversing the eq arguments changes the result.
+        impl PartialEq for S {
+            fn eq(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        impl PartialEqSpecImpl for S {
+            open spec fn obeys_eq_spec() -> bool {
+                true
+            }
+
+            open spec fn eq_spec(&self, other: &Self) -> bool {
+                self.0 < other.0
+            }
+        }
+
+        fn test_equal_length() {
+            let slice: &[S] = &[S(0), S(0)];
+            let needle: &[S] = &[S(1), S(1)];
+            let cmp01 = slice.ends_with(needle);
+            let cmp10 = needle.ends_with(slice);
+
+            // needle == slice
+            assert(!cmp01);
+            assert(cmp10);
+        }
+
+        fn test_shorter_suffix() {
+            let slice: &[S] = &[S(0), S(2), S(3)];
+            let matches = slice.ends_with(&[S(1), S(2)]);
+            let mismatches = slice.ends_with(&[S(1), S(4)]);
+
+            assert(matches);
+            assert(!mismatches);
         }
     } => Ok(())
 }
@@ -1207,4 +1301,93 @@ test_verify_one_file! {
             assert(!values.contains(&4));
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_slice_reverse verus_code! {
+        use vstd::prelude::*;
+
+        fn test(s: &mut [u8])
+            requires
+                old(s)@ == seq![1u8, 2, 3],
+        {
+            s.reverse();
+            assert(s@ == seq![3u8, 2, 1]);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // GitHub issue #2968
+    #[test] test_range_inclusive_exhausted_iter verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+        use vstd::std_specs::iter::IteratorSpec;
+
+        fn demo() -> (s: u8)
+            ensures s >= 1, // FAILS
+        {
+            let mut rng = 0u8..=0u8;
+            assert(rng.remaining().len() == 1);
+            let _ = rng.next();
+            assert(rng.remaining().len() == 0);
+            match rng.start_bound() {
+                Bound::Included(s) => *s,
+                _ => 0,
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    // GitHub issue #3145
+    #[test] test_slice_index_exhausted_range_inclusive verus_code! {
+        use core::ops::{Bound, RangeBounds};
+        use vstd::prelude::*;
+
+        fn advance<I: Iterator<Item = usize>>(it: &mut I) {
+            let _ = it.next();
+        }
+
+        fn test_get() {
+            let v: Vec<u8> = vec![10, 20];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let t = v.as_slice().get(r);
+                assert(t is Some); // FAILS
+            }
+        }
+
+        fn test_index() {
+            let v: Vec<u8> = vec![10, 20, 30];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let t = &v.as_slice()[r];
+                assert(t@.len() == 0);
+            }
+        }
+
+        fn test_index_oob() {
+            let v: Vec<u8> = vec![10, 20];
+            let mut r = 2usize..=2usize;
+            advance(&mut r);
+            let exhausted_at_2 = match (r.start_bound(), r.end_bound()) {
+                (Bound::Included(a), Bound::Excluded(b)) => *a == 2 && *b == 2,
+                _ => false,
+            };
+            if exhausted_at_2 {
+                let _ = &v.as_slice()[r]; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

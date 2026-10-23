@@ -4,6 +4,7 @@ use super::core::IndexSpec;
 use super::iter::IteratorSpec;
 use super::range::{
     ExRange, RangeBoundsSpec, slice_range_end, slice_range_start, slice_range_valid,
+    spec_range_inclusive_slice_bounds,
 };
 
 use core::ops::{
@@ -231,11 +232,11 @@ pub assume_specification<T>[ <RangeFull as SliceIndex<[T]>>::index_mut ](i: Rang
 
 impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
     open spec fn in_bounds(&self, slice: &[T]) -> bool {
-        generic_slice_in_bounds(self, slice@)
+        generic_slice_in_bounds(&spec_range_inclusive_slice_bounds(self), slice@)
     }
 
     open spec fn index_postcondition(&self, slice: &[T], r: &[T]) -> bool {
-        generic_slice_index_postcondition(self, slice@, r@)
+        generic_slice_index_postcondition(&spec_range_inclusive_slice_bounds(self), slice@, r@)
     }
 
     open spec fn index_mut_postcondition(
@@ -245,7 +246,7 @@ impl<T> super::super::slice::SliceIndexSpecImpl<[T]> for RangeInclusive<usize> {
         immediate_output: &[T],
         final_output: &[T]
     ) -> bool {
-        generic_slice_index_mut_postcondition(self, old_slice@, final_slice@, immediate_output@, final_output@)
+        generic_slice_index_mut_postcondition(&spec_range_inclusive_slice_bounds(self), old_slice@, final_slice@, immediate_output@, final_output@)
     }
 }
 
@@ -260,13 +261,14 @@ pub assume_specification<T>[ <RangeInclusive<usize> as SliceIndex<[T]>>::index_m
 ;
 
 // starts_with
+// Rust compares `needle == &slice[..needle.len()]`
 pub open spec fn spec_slice_starts_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
     &&& needle@.len() <= slice@.len()
     &&& forall|i: int| #![auto]
         0 <= i < needle@.len() ==>
             <T as super::cmp::PartialEqSpec<T>>::eq_spec(
-                &slice@[i],
                 &needle@[i],
+                &slice@[i],
             )
 }
 
@@ -284,13 +286,14 @@ pub assume_specification<T: PartialEq>[ <[T]>::starts_with ](
 ;
 
 // ends_with
+// Rust compares `needle == &slice[slice.len() - needle.len()..]`.
 pub open spec fn spec_slice_ends_with<T: PartialEq>(slice: &[T], needle: &[T]) -> bool {
     &&& needle@.len() <= slice@.len()
     &&& forall|i: int| #![auto]
         0 <= i < needle@.len() ==>
             <T as super::cmp::PartialEqSpec<T>>::eq_spec(
-                &slice@[slice@.len() - needle@.len() + i],
                 &needle@[i],
+                &slice@[slice@.len() - needle@.len() + i],
             )
 }
 
@@ -407,6 +410,12 @@ pub assume_specification<T>[ <[T]>::contains ] (slice: &[T], value: &T) -> (resu
         T: PartialEq<T>,
         ensures
             <T as super::cmp::PartialEqSpec<T>>::obeys_eq_spec() ==> result == spec_slice_contains(slice, value),
+;
+
+// reverse
+pub assume_specification<T>[ <[T]>::reverse ](slice: &mut [T])
+    ensures
+        final(slice)@ == old(slice)@.reverse(),
 ;
 
 // The `iter` method of a `<T>` returns an iterator of type `Iter<'_, T>`,

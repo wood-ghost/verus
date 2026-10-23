@@ -658,10 +658,7 @@ test_verify_one_file! {
             };
             f();
             let s = "ghi";
-            match s {
-                "ghi" => { assert(s@[1] == 'h'); }
-                _ => {}
-            }
+            assert(s@[1] == 'h');
             proof {
                 reveal_strlit("jkl");
                 reveal_byteslit(b"mno");
@@ -670,6 +667,22 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_auto_reveal_strlit_pattern_unsupported verus_code! {
+        use vstd::prelude::*;
+
+        // #3195 requires SMT equality for literal patterns; auto-reveal must
+        // preserve this restriction.
+        #[verifier::auto_reveal_strlit]
+        fn test(s: &str) {
+            match s {
+                "ghi" => { assert(s@[1] == 'h'); }
+                _ => {}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "equality-testing this type in pattern")
 }
 
 // Attributes on compound expressions and closure expressions.
