@@ -950,6 +950,34 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] let_chain_exec_ghost_condition ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test(value: Maybe) {
+            let ghost gate = true;
+            if let Maybe::Some(x) = value && gate {
+                let y = x;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "condition must have mode exec")
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_proof_in_exec ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test(value: Maybe) {
+            proof {
+                let ghost gate = true;
+                if let Maybe::Some(x) = value && gate && x < 10 {
+                    assert(x < 10);
+                }
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_or_pattern_mode_inconsistent verus_code! {
         enum Foo {

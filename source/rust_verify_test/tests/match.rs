@@ -576,6 +576,172 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file_with_options! {
+    #[test] let_chain_nested_control ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn positive(value: Maybe) -> (r: bool)
+            ensures r == match value { Maybe::Some(x) => x > 0, Maybe::None => false },
+        {
+            if let Maybe::Some(x) = value {
+                if x > 0 {
+                    return true;
+                }
+            }
+            false
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_basic ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn positive(value: Maybe) -> (r: bool)
+            ensures r == match value { Maybe::Some(x) => x > 0, Maybe::None => false },
+        {
+            if let Maybe::Some(x) = value && x > 0 {
+                return true;
+            }
+            false
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_dependent_bindings ["--edition 2024"] => verus_code! {
+        enum Maybe<T> { Some(T), None }
+
+        fn test(gate: bool, value: Maybe<Maybe<u32>>) -> (r: u32)
+            ensures r == match value {
+                Maybe::Some(Maybe::Some(x)) => if gate && x < 10 { x } else { 10 },
+                _ => 10,
+            },
+        {
+            if gate && let Maybe::Some(inner) = value
+                && let Maybe::Some(x) = inner && x < 10
+            {
+                x
+            } else {
+                10
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_short_circuit ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test(gate: bool) {
+            let mut count = 0u32;
+            if gate
+                && let Maybe::Some(x) = { count = count + 1; Maybe::Some(count) }
+                && x == 1
+                && let Maybe::Some(y) = { count = count + 1; Maybe::Some(count) }
+                && y == 2
+            {
+                assert(gate && count == 2);
+            } else {
+                assert(!gate && count == 0);
+            }
+            assert(count == if gate { 2u32 } else { 0u32 });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_shadowing_and_or_pattern ["--edition 2024"] => verus_code! {
+        enum E { A(u32), B(u32), C }
+
+        fn test(value: E) {
+            let x = 99u32;
+            if let E::A(x) | E::B(x) = value && x < 10
+                && let x = x + 1 && (x == 1 || x == 2)
+            {
+                assert(1 <= x <= 2);
+            } else {
+                assert(x == 99);
+            }
+            assert(x == 99);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_else_is_reachable ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test(value: Maybe, gate: bool) {
+            if let Maybe::Some(x) = value && gate {
+                assert(gate);
+            } else {
+                assert(false); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_nontrivial_else ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+        struct Pair { a: u32, b: u32 }
+
+        fn test(gate: bool, value: Maybe) {
+            let mut out = 0u32;
+            'outer: loop
+                invariant out <= 2,
+                decreases 1int,
+            {
+                if gate && let Maybe::Some(x) = value && x == 0 {
+                    out = 1;
+                } else {
+                    let r = &mut out;
+                    *r = 2;
+                    let p = Pair { a: 0, b: 3 };
+                    let p2 = Pair { a: 4, ..p };
+                    let c = |z: u32| -> (result: u32)
+                        ensures result == z,
+                    { z };
+                    let n = c(p2.b);
+                    assert(n == 3);
+                    'inner: loop
+                        decreases 1int,
+                    {
+                        break 'inner;
+                    }
+                    assert(out == 2);
+                    break 'outer;
+                }
+                break 'outer;
+            }
+            assert(out <= 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_spec_and_proof ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(int), None }
+
+        spec fn positive(value: Maybe) -> bool {
+            if let Maybe::Some(x) = value && x > 0 { true } else { false }
+        }
+
+        proof fn test(value: Maybe) {
+            assert(positive(value) == match value {
+                Maybe::Some(x) => x > 0,
+                Maybe::None => false,
+            });
+            if let Maybe::Some(x) = value && x > 0 {
+                assert(positive(value));
+            } else {
+                assert(!positive(value));
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] test_or_patterns verus_code! {
         use vstd::std_specs::alloc::*;

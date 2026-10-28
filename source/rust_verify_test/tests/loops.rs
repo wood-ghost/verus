@@ -39,6 +39,73 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] let_chain_while ["--edition 2024"] => verus_code! {
+        enum Maybe<T> { Some(T), None }
+
+        fn test() {
+            let mut i = 0u32;
+            while i < 3 && let Maybe::Some(inner) = Maybe::Some(Maybe::Some(i))
+                && let Maybe::Some(x) = inner && x < 3
+                invariant i <= 3,
+                decreases 3 - i,
+            {
+                assert(x == i);
+                i = i + 1;
+                if i == 1 {
+                    continue;
+                }
+                assert(i >= 2);
+            }
+            assert(i == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_while_condition_effects ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test() {
+            let mut i = 0u32;
+            let mut evaluations = 0u32;
+            while let Maybe::Some(x) = {
+                evaluations = evaluations + 1;
+                Maybe::Some(i)
+            } && x < 2
+                invariant i <= 2, evaluations == i,
+                decreases 2 - i,
+            {
+                assert(evaluations == i + 1);
+                i = i + 1;
+            }
+            assert(i == 2);
+            assert(evaluations == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_continue_outer_loop ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test() {
+            let mut i = 0u32;
+            while i < 3
+                invariant i <= 3,
+                decreases 3 - i,
+            {
+                i = i + 1;
+                if let Maybe::Some(x) = Maybe::Some(i) && x < 3 {
+                    continue;
+                }
+                assert(i == 3);
+            }
+            assert(i == 3);
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
     #[test] basic_while_fail1 verus_code! {
         fn test1() {

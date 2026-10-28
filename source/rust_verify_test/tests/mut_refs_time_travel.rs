@@ -1459,6 +1459,75 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] let_chain_mutable_bindings ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test(gate: bool) {
+            let mut left = Maybe::Some(0);
+            let mut right = Maybe::Some(2);
+            if gate && let Maybe::Some(ref mut x) = left
+                && let Maybe::Some(ref mut y) = right && *x < *y
+            {
+                *x = *y;
+                *y = 3;
+            } else {
+                left = Maybe::Some(4);
+            }
+            assert(left == Maybe::Some(if gate { 2 } else { 4 }));
+            assert(right == Maybe::Some(if gate { 3 } else { 2 }));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_snapshot_during_borrow ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test() {
+            let mut value = Maybe::Some(0);
+            if let Maybe::Some(ref mut x) = value && {
+                let ghost snapshot = value;
+                *x = 1;
+                true
+            } {
+            }
+        }
+    } => Err(err) => assert_spec_borrowed(err, "value")
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_move_after_boolean ["--edition 2024"] => verus_code! {
+        struct X { }
+        enum Maybe { Some(X), None }
+        fn consume<T>(value: T) { }
+
+        fn test(value: Maybe, gate: bool) {
+            if gate && let Maybe::Some(x) = value {
+                consume(x);
+            } else {
+                consume(value);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_move_before_boolean ["--edition 2024"] => verus_code! {
+        struct X { }
+        enum Maybe { Some(X), None }
+        fn consume<T>(value: T) { }
+
+        fn test(value: Maybe, gate: bool) {
+            if let Maybe::Some(x) = value && gate {
+                consume(x);
+            } else {
+                consume(value);
+            }
+        }
+    } => Err(err) => assert_rust_error_msg(err, "use of partially moved value")
+}
+
+test_verify_one_file_with_options! {
     #[test] test_if_let_with_move_fail1 ["--no-erasure-check"] => verus_code! {
         fn consume<A>(a: A) { }
         struct X { }
