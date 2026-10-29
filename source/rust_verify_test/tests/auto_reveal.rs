@@ -682,7 +682,7 @@ test_verify_one_file! {
                 _ => {}
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "equality-testing this type in pattern")
+    } => Err(err) => assert_vir_error_msg(err, "equality-testing this type in a pattern")
 }
 
 // Attributes on compound expressions and closure expressions.
