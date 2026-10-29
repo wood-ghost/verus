@@ -2086,6 +2086,86 @@ pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     return Ok(mk_expr(ExprX::Match(place_vir, Arc::new(vir_arms), false))?);
 }
 
+fn cond_let_expr_to_vir_match<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    cond: &Expr<'tcx>,
+    lhs_body: vir::ast::Expr,
+    lhs_span: Span,
+    rhs_body: vir::ast::Expr,
+    rhs_span: Span,
+) -> Result<ExprX, VirErr> {
+    let ExprKind::Let(LetExpr { pat, init: expr, .. }) = &cond.kind else {
+        panic!("Expected let expression");
+    };
+    // Match the original place: materializing a value here would change moves and borrows.
+    // if let
+    let vir_place = expr_to_vir_place(bctx, expr)?;
+    let vir_place = simplify_place_by_cancelling(&vir_place);
+    let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
+    /* lhs */
+    {
+        let pattern = pattern_to_vir(bctx, pat)?;
+        let guard =
+            bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
+        let vir_arm = ArmX { pattern, guard, body: lhs_body };
+        vir_arms.push(bctx.spanned_new(lhs_span, vir_arm));
+    }
+    /* rhs */
+    {
+        let pat_typ = vir_arms[0].x.pattern.typ.clone();
+        let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
+        let guard =
+            bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
+        let vir_arm = ArmX { pattern, guard, body: rhs_body };
+        vir_arms.push(bctx.spanned_new(rhs_span, vir_arm));
+    }
+    Ok(ExprX::Match(vir_place, Arc::new(vir_arms), false))
+}
+
+fn condition_has_let(cond: &Expr<'_>) -> bool {
+    match &cond.peel_drop_temps().kind {
+        ExprKind::Let(_) => true,
+        ExprKind::Binary(op, lhs, rhs) if op.node == BinOpKind::And => {
+            condition_has_let(lhs) || condition_has_let(rhs)
+        }
+        _ => false,
+    }
+}
+
+fn let_chain_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    cond: &Expr<'tcx>,
+    success: vir::ast::Expr,
+    failure: vir::ast::Expr,
+    typ: &Typ,
+) -> Result<vir::ast::Expr, VirErr> {
+    fn lower<'tcx>(
+        bctx: &BodyCtxt<'tcx>,
+        cond: &Expr<'tcx>,
+        success: vir::ast::Expr,
+        typ: &Typ,
+    ) -> Result<vir::ast::Expr, VirErr> {
+        let cond = cond.peel_drop_temps();
+        if let ExprKind::Binary(op, lhs, rhs) = &cond.kind {
+            if op.node == BinOpKind::And {
+                let rest = lower(bctx, rhs, success, typ)?;
+                return lower(bctx, lhs, rest, typ);
+            }
+        }
+        let failure = bctx.spanned_typed_new(cond.span, typ, ExprX::LetChainElse);
+        let x = if matches!(&cond.kind, ExprKind::Let(_)) {
+            // Later clauses are in the successful arm's body, not its guard: Rust
+            // performs pattern moves and mutable bindings before evaluating them.
+            cond_let_expr_to_vir_match(bctx, cond, success, cond.span, failure, cond.span)?
+        } else {
+            ExprX::If(expr_to_vir_consume(bctx, cond)?, success, Some(failure))
+        };
+        Ok(bctx.spanned_typed_new(cond.span, typ, x))
+    }
+    let body = lower(bctx, cond, success, typ)?;
+    Ok(bctx.spanned_typed_new(cond.span, typ, ExprX::LetChain { body, els: failure }))
+}
+
 pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -2106,39 +2186,6 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         check_lit_int(&bctx.ctxt, expr.span, in_negative_literal, i, &typ)?;
         let c = vir::ast_util::const_int_from_u128(i);
         mk_expr(ExprX::Const(c))
-    };
-
-    let cond_let_expr_to_vir_match = |cond: &Expr<'tcx>,
-                                      lhs_body,
-                                      lhs_span,
-                                      rhs_body,
-                                      rhs_span|
-     -> Result<ExprX, VirErr> {
-        let ExprKind::Let(LetExpr { pat, init: expr, .. }) = &cond.kind else {
-            panic!("Expected let expression");
-        };
-        // if let
-        let vir_place = expr_to_vir_place(bctx, expr)?;
-        let vir_place = simplify_place_by_cancelling(&vir_place);
-        let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
-        /* lhs */
-        {
-            let pattern = pattern_to_vir(bctx, pat)?;
-            let guard =
-                bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
-            let vir_arm = ArmX { pattern, guard, body: lhs_body };
-            vir_arms.push(bctx.spanned_new(lhs_span, vir_arm));
-        }
-        /* rhs */
-        {
-            let pat_typ = vir_arms[0].x.pattern.typ.clone();
-            let pattern = bctx.spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
-            let guard =
-                bctx.spanned_typed_new(expr.span, &bool_typ(), ExprX::Const(Constant::Bool(true)));
-            let vir_arm = ArmX { pattern, guard, body: rhs_body };
-            vir_arms.push(bctx.spanned_new(rhs_span, vir_arm));
-        }
-        Ok(ExprX::Match(vir_place, Arc::new(vir_arms), false))
     };
 
     let expr_attrs = bctx.ctxt.tcx.hir_attrs(expr.hir_id);
@@ -3187,12 +3234,31 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         )
                     };
                     mk_expr(cond_let_expr_to_vir_match(
+                        bctx,
                         cond,
                         expr_to_vir_consume(bctx, &lhs)?,
                         lhs.span,
                         rhs_vir,
                         rhs_span,
                     )?)
+                }
+                _ if condition_has_let(cond) => {
+                    let success = expr_to_vir_consume(bctx, lhs)?;
+                    let failure = match rhs {
+                        Some(rhs) => expr_to_vir_consume(bctx, rhs)?,
+                        None => bctx.spanned_typed_new(
+                            expr.span,
+                            &expr_typ()?,
+                            ExprX::Block(Arc::new(vec![]), None),
+                        ),
+                    };
+                    Ok(ExprOrPlace::Expr(let_chain_to_vir(
+                        bctx,
+                        cond,
+                        success,
+                        failure,
+                        &expr_typ()?,
+                    )?))
                 }
                 _ => {
                     let vir_cond = expr_to_vir_consume(bctx, cond)?;
@@ -3347,6 +3413,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             cond.span,
                             &body_ty,
                             cond_let_expr_to_vir_match(
+                                bctx,
                                 cond,
                                 body,
                                 body_span,
@@ -3355,6 +3422,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             )?,
                         ),
                     )
+                }
+                _ if condition_has_let(cond) => {
+                    let failure = bctx.spanned_typed_new(
+                        cond.span,
+                        &body.typ,
+                        ExprX::BreakOrContinue {
+                            label: label.clone(),
+                            is_break: true,
+                            value: None,
+                        },
+                    );
+                    let typ = body.typ.clone();
+                    (None, let_chain_to_vir(bctx, cond, body, failure, &typ)?)
                 }
                 _ => (Some(expr_to_vir_consume(bctx, cond)?), body),
             };

@@ -46,6 +46,39 @@ without a match destruction:
 {{#include ../../../../examples/guide/datatypes.rs:rect_height}}
 ```
 
+## Let-chains (Rust 2024)
+
+With Rust edition 2024, `if` and `while` conditions can combine pattern matches
+and boolean expressions using `&&`. Pass `--edition=2024` to Verus, or set
+`edition = "2024"` in your crate's `Cargo.toml`.
+
+```rust
+use vstd::prelude::*;
+
+verus! {
+fn positive(value: Option<u32>) -> (r: bool)
+    ensures r == match value { Some(x) => x > 0, None => false },
+{
+    if let Some(x) = value && x > 0 {
+        return true;
+    }
+    false
+}
+
+fn main() {}
+}
+```
+
+Conditions are evaluated from left to right, stopping at the first false
+expression or unsuccessful pattern. A pattern's bindings are available to later
+conditions and the successful body, but not the `else` branch. Moves and borrows
+take place when the pattern succeeds, even if a later condition fails.
+
+Like existing `while let` loops, let-chain loops use a conditional break
+internally. Use loop `ensures` clauses to establish exit properties, and
+`invariant_except_break` for invariants that need not hold after evaluating an
+exiting condition.
+
 ## matches with &&, ==>, and &&&
 
 `match` is natural for examining every variant of an `enum`.

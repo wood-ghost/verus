@@ -270,6 +270,8 @@ fn outer_reason_by_expr_kind(e: &Expr) -> Option<OuterProphReason> {
             | ExprX::AssertQuery { .. }
             | ExprX::AssertCompute { .. }
             | ExprX::If(..)
+            | ExprX::LetChain { .. }
+            | ExprX::LetChainElse
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
             | ExprX::ProofInSpec(..)
@@ -517,6 +519,8 @@ struct Record {
     mut_bor_place_modes: HashMap<crate::messages::AstId, (Mode, Option<ProofModeMutRefNote>)>,
     /// Nodes to set the 'assert_irrefutable' flag
     assert_irrefutable: HashSet<crate::messages::AstId>,
+    /// Join the control dependencies of all edges to a let-chain's shared else.
+    let_chain_failures: Vec<(Mode, Proph)>,
 }
 
 #[derive(Debug)]
@@ -2727,6 +2731,24 @@ fn check_expr(
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, e, Mode::Spec, outer_proph)?;
             Ok((Mode::Proof, Proph::No))
         }
+        ExprX::LetChain { body, els } => {
+            record.let_chain_failures.push((outer_mode, outer_proph.clone()));
+            let body_result =
+                check_expr(ctxt, record, typing, outer_mode, expect, body, outer_proph);
+            let (failure_mode, failure_proph) = record.let_chain_failures.pop().unwrap();
+            let (body_mode, body_proph) = body_result?;
+            // All pattern scopes have been popped by the ordinary Match visitor. The
+            // else is checked once, under every condition on which reaching it depends.
+            let (else_mode, else_proph) =
+                check_expr(ctxt, record, typing, failure_mode, expect, els, &failure_proph)?;
+            Ok((mode_join(body_mode, else_mode), body_proph.join(else_proph)))
+        }
+        ExprX::LetChainElse => {
+            let (mode, proph) = record.let_chain_failures.last_mut().expect("let-chain else scope");
+            *mode = mode_join(*mode, outer_mode);
+            *proph = proph.clone().join(outer_proph.clone());
+            Ok((outer_mode, Proph::No))
+        }
         ExprX::If(e1, e2, e3) => {
             let condition_expect = match typing.block_ghostness {
                 Ghost::Exec => Expect(Mode::Exec),
@@ -3744,6 +3766,7 @@ fn check_function_inner(
         infer_spec_for_implicit_reborrows,
         mut_bor_place_modes,
         assert_irrefutable,
+        let_chain_failures,
     } = record;
     // Reset the fields that are per-function
     *type_inv_info = TypeInvInfo { ctor_needs_check: HashMap::new() };
@@ -3753,6 +3776,7 @@ fn check_function_inner(
     *infer_spec_for_implicit_reborrows = None;
     *mut_bor_place_modes = HashMap::new();
     *assert_irrefutable = HashSet::new();
+    let_chain_failures.clear();
 
     let mut fun_typing = typing.push_var_scope();
 
@@ -4118,6 +4142,7 @@ pub fn check_function(
         infer_spec_for_implicit_reborrows: None,
         mut_bor_place_modes: HashMap::new(),
         assert_irrefutable: HashSet::new(),
+        let_chain_failures: vec![],
     };
     let mut state = State {
         vars: ScopeMap::new(),

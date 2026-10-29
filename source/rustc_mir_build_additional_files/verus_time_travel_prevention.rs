@@ -763,10 +763,10 @@ fn conjoin_exprs<'tcx>(
     hir_id: HirId,
     span: Span,
 ) -> ExprKind<'tcx> {
-    // rustc_mid_build expects `&&` chains to associate a specific direction,
-    // specifically ((e1 && e2) && e3) which is what we emit here.
-    // Note: when we support let-chains, we will need to do more work to re-associate properly
-    // at the top level.
+    // Emit the usual left-associated conjunction for this let's shadow bindings.
+    // Substituting it into a user let-chain can also create right-nested conjunctions.
+    // Our pattern checker visits both sides; retaining the THIR scopes here preserves
+    // Rust's temporary lifetimes and short-circuit cleanup paths.
     assert!(exprs.len() >= 2);
     let mut kind = ExprKind::LogicalOp { op: LogicalOp::And, lhs: exprs[0], rhs: exprs[1] };
     let bool_ty = cx.tcx.mk_ty_from_kind(TyKind::Bool);

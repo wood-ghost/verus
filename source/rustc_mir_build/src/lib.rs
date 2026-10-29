@@ -53,6 +53,7 @@ use rustc_middle::util::Providers;
 
 pub fn verus_provide(providers: &mut Providers) {
     providers.queries.thir_body = thir::cx::thir_body;
+    providers.queries.check_match = thir::pattern::check_match;
 }
 
 pub fn provide(providers: &mut Providers) {

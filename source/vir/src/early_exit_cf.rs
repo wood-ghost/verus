@@ -71,6 +71,8 @@ fn expr_get_early_exits_rec(
             | ExprX::Multi(..)
             | ExprX::Assign { .. }
             | ExprX::If(..)
+            | ExprX::LetChain { .. }
+            | ExprX::LetChainElse
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
             | ExprX::ProofInSpec(..)

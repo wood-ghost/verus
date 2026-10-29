@@ -1662,6 +1662,9 @@ pub(crate) fn expr_to_stm_opt(
             ))
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
+        ExprX::LetChain { .. } | ExprX::LetChainElse => {
+            panic!("let-chain continuations should already be expanded")
+        }
         ExprX::Assign { place, rhs, op: Some(binary_op), resolve, typ: _ } => {
             assert!(!resolve);
 
@@ -4739,7 +4742,9 @@ fn exec_closure_body_stms(
 
     for param in params.iter() {
         let kind = PreLocalDeclKind::ExecClosureParam;
-        let uid = state.declare_var_stm(&param.name, &param.a, kind, false);
+        // A source closure can occur on multiple let-chain failure paths after
+        // simplification. Give each checked occurrence distinct statement locals.
+        let uid = state.declare_var_stm(&param.name, &param.a, kind, true);
         typ_inv_vars.push((uid.clone(), param.a.clone()));
         param_set.insert(uid);
     }
@@ -4755,8 +4760,8 @@ fn exec_closure_body_stms(
     }
 
     let kind = PreLocalDeclKind::Immutable(Immutable(LocalDeclKind::ExecClosureRet));
-    state.declare_var_stm(&ret.name, &ret.a, kind, false);
-    let dest = def::unique_local(&ret.name);
+    let ret_uid = state.declare_var_stm(&ret.name, &ret.a, kind, true);
+    let dest = def::unique_local(&ret_uid);
 
     let mut ens_exps = Vec::new();
     let mut ens_checks = Vec::new();

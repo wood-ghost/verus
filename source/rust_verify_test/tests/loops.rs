@@ -48,6 +48,7 @@ test_verify_one_file_with_options! {
             while i < 3 && let Maybe::Some(inner) = Maybe::Some(Maybe::Some(i))
                 && let Maybe::Some(x) = inner && x < 3
                 invariant i <= 3,
+                ensures i == 3,
                 decreases 3 - i,
             {
                 assert(x == i);
@@ -73,7 +74,9 @@ test_verify_one_file_with_options! {
                 evaluations = evaluations + 1;
                 Maybe::Some(i)
             } && x < 2
-                invariant i <= 2, evaluations == i,
+                invariant_except_break evaluations == i,
+                invariant i <= 2,
+                ensures i == 2, evaluations == 3,
                 decreases 2 - i,
             {
                 assert(evaluations == i + 1);

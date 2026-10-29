@@ -561,6 +561,8 @@ struct Builder<'a> {
 
     /// Loop stack, outermost to innermost
     loops: Vec<LoopEntry>,
+    /// One shared failure block for each enclosing let-chain conditional.
+    let_chain_failures: Vec<BBIndex>,
     /// First element is the outermost fn, followed by closure stack, outermost to innermost
     fns: Vec<FnScope>,
 
@@ -635,6 +637,7 @@ fn new_cfg<'a>(
     let mut builder = Builder {
         basic_blocks: vec![],
         loops: vec![],
+        let_chain_failures: vec![],
         fns: vec![],
         assigns_to_resolve: vec![],
         typ_inv_obligations: vec![],
@@ -983,6 +986,26 @@ impl<'a> Builder<'a> {
                 self.basic_blocks[bb].successors.push(join_block);
                 self.optionally_push_successor(snd_bb_end, join_block);
                 Maybe::Some(join_block)
+            }
+            ExprX::LetChain { body, els } => {
+                let else_block = self.new_bb(AstPosition::Before(els.span.id), false);
+                self.let_chain_failures.push(else_block);
+                let body_end = self.build(body, bb);
+                self.let_chain_failures.pop().unwrap();
+                let else_end = self.build(els, else_block);
+                if !body_end.is_never() || !else_end.is_never() {
+                    let join = self.new_bb(AstPosition::After(span_id), false);
+                    self.optionally_push_successor(body_end, join);
+                    self.optionally_push_successor(else_end, join);
+                    Maybe::Some(join)
+                } else {
+                    Maybe::Never
+                }
+            }
+            ExprX::LetChainElse => {
+                let target = *self.let_chain_failures.last().expect("let-chain else scope");
+                self.basic_blocks[bb].successors.push(target);
+                Maybe::Never
             }
             ExprX::If(cond, thn, els) => {
                 // TODO(new_mut_ref): (completeness) if the condition has conditional short-circuiting,

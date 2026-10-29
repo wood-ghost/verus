@@ -960,7 +960,7 @@ test_verify_one_file_with_options! {
                 let y = x;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "condition must have mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot access spec-mode place in executable context")
 }
 
 test_verify_one_file_with_options! {
@@ -976,6 +976,25 @@ test_verify_one_file_with_options! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_prophetic_else ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+        tracked struct Token { }
+
+        #[verifier::prophetic]
+        spec fn condition() -> bool { true }
+
+        proof fn consume(tracked token: Token) { }
+
+        proof fn test(value: Maybe, tracked token: Token) {
+            if let Maybe::Some(x) = value && condition() {
+            } else {
+                consume(token);
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot occur in prophecy-conditional context")
 }
 
 test_verify_one_file! {

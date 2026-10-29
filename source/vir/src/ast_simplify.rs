@@ -19,7 +19,7 @@ use crate::ast_util::{
     conjoin, is_unit, mk_eq, mk_implies, place_to_spec_expr, typ_args_for_datatype_typ,
     undecorate_typ, unit_typ, wrap_in_trigger,
 };
-use crate::ast_visitor::VisitorScopeMap;
+use crate::ast_visitor::{AstVisitor, NoScoper, Rewrite, VisitorScopeMap};
 use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
 use crate::def::is_dummy_param_name;
@@ -1303,6 +1303,7 @@ fn simplify_function(
     }
 
     let function = Spanned::new(function.span.clone(), functionx);
+    let function = ExpandLetChains { els: None }.visit_function(&function)?;
     let mut map: VisitorScopeMap = ScopeMap::new();
     let function = crate::ast_visitor::map_function_visitor_env(
         &function,
@@ -1448,6 +1449,46 @@ fn add_tuple_auto_impl(
         external_trait_blanket: false,
     };
     trait_impls.push(Spanned::new(ctx.no_span.clone(), trait_implx));
+}
+
+/// Expand shared let-chain failure continuations after mode checking and resolution.
+/// Do this before ordinary simplification, so duplicated source closures each acquire
+/// their own simplifier-generated variables. No source subtree is duplicated during
+/// the earlier analyses that require unique AST, read, and binding identities.
+struct ExpandLetChains {
+    els: Option<Expr>,
+}
+
+impl AstVisitor<Rewrite, VirErr, NoScoper> for ExpandLetChains {
+    fn visit_expr(&mut self, expr: &Expr) -> Result<Expr, VirErr> {
+        match &expr.x {
+            ExprX::LetChain { body, els } => {
+                let els = self.visit_expr(els)?;
+                let outer = self.els.replace(els);
+                let body = self.visit_expr(body);
+                self.els = outer;
+                body
+            }
+            ExprX::LetChainElse => Ok(self.els.clone().expect("let-chain else scope")),
+            _ => self.visit_expr_rec(expr),
+        }
+    }
+
+    fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, VirErr> {
+        self.visit_typ_rec(typ)
+    }
+
+    fn visit_place(&mut self, place: &Place) -> Result<Place, VirErr> {
+        self.visit_place_rec(place)
+    }
+
+    fn visit_pattern(&mut self, pattern: &Pattern) -> Result<Pattern, VirErr> {
+        self.visit_pattern_rec(pattern)
+    }
+
+    fn visit_stmt(&mut self, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
+        Ok(vec![self.visit_stmt_rec(stmt)?])
+    }
 }
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {

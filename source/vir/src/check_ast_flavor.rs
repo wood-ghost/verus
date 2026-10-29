@@ -10,7 +10,9 @@ use std::sync::Arc;
 fn check_expr_simplified(expr: &Expr, function: &Function) -> Result<(), ()> {
     check_typ_simplified(&expr.typ, &function.x.typ_params)?;
     match expr.x {
-        ExprX::ConstVar(..) | ExprX::Match(..) => Err(()),
+        ExprX::ConstVar(..) | ExprX::Match(..) | ExprX::LetChain { .. } | ExprX::LetChainElse => {
+            Err(())
+        }
         _ => Ok(()),
     }
 }

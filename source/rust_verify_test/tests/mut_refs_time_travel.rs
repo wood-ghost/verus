@@ -1447,7 +1447,8 @@ test_verify_one_file_with_options! {
         enum Option<V> { Some(V), None }
 
         fn test_if_let_move_conjunction(s: Option<(X, X)>, cond: bool) {
-            // this should be ok, but Verus doesn't support if-let chains right now
+            // The successful pattern moves a before cond is checked. If cond is
+            // false, the else must not reuse the partially moved s.
             let mut s = s;
             if let Option::Some((a, ref mut b)) = s && cond {
                 let t1 = a;
@@ -1455,7 +1456,7 @@ test_verify_one_file_with_options! {
                 let t2 = s;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not currently support `let` expressions in conditions")
+    } => Err(err) => assert_rust_error_msg(err, "use of partially moved value")
 }
 
 test_verify_one_file_with_options! {
@@ -1477,6 +1478,43 @@ test_verify_one_file_with_options! {
             assert(right == Maybe::Some(if gate { 3 } else { 2 }));
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_temporary_borrow_failure ["--edition 2024"] => verus_code! {
+        enum Maybe<T> { Some(T), None }
+
+        fn test(gate: bool) {
+            let mut value = 0u32;
+            if gate && let Maybe::Some(r) = Maybe::Some(&mut value) && {
+                *r = 1;
+                false
+            } {
+                assert(false);
+            } else {
+                assert(value == if gate { 1u32 } else { 0u32 });
+                value = 2;
+            }
+            assert(value == 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_temporary_borrow_failure_wrong_value ["--edition 2024"] => verus_code! {
+        enum Maybe<T> { Some(T), None }
+
+        fn test(gate: bool) {
+            let mut value = 0u32;
+            if gate && let Maybe::Some(r) = Maybe::Some(&mut value) && {
+                *r = 1;
+                false
+            } {
+            } else {
+                assert(value == 0); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file_with_options! {

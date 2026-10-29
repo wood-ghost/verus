@@ -223,11 +223,12 @@ impl<'p, 'tcx> MatchVisitor<'p, 'tcx> {
                 self.with_hir_source(hir_id, |this| this.visit_land(&this.thir[value], accumulator))
             }
             ExprKind::LogicalOp { op: LogicalOp::And, lhs, rhs } => {
-                // We recurse into the lhs only, because `&&` chains associate to the left.
+                // Verus expands each let into a conjunction with shadow bindings.
+                // A source let on the RHS therefore introduces a nested conjunction
+                // there too. Walk both sides without changing their temporary scopes.
                 let res_lhs = self.visit_land(&self.thir[lhs], accumulator);
-                let res_rhs = self.visit_land_rhs(&self.thir[rhs])?;
-                accumulator.push(res_rhs);
-                res_lhs
+                let res_rhs = self.visit_land(&self.thir[rhs], accumulator);
+                res_lhs.and(res_rhs)
             }
             _ => {
                 let res = self.visit_land_rhs(ex)?;

@@ -683,7 +683,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] let_chain_nontrivial_else ["--edition 2024"] => verus_code! {
+    #[test] let_chain_nontrivial_else ["vstd", "--edition 2024"] => verus_code! {
         enum Maybe { Some(u32), None }
         struct Pair { a: u32, b: u32 }
 
@@ -738,6 +738,84 @@ test_verify_one_file_with_options! {
             } else {
                 assert(!positive(value));
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_nested_and_else_if ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn classify(value: Maybe, gate: bool) -> (r: u32)
+            ensures r == match value {
+                Maybe::Some(x) => if x > 10 {
+                    if gate && x < 20 { 1u32 } else { 2u32 }
+                } else if gate && x < 5 { 3u32 } else { 4u32 },
+                Maybe::None => 4u32,
+            },
+        {
+            if let Maybe::Some(x) = value && x > 10 {
+                if gate && let Maybe::Some(y) = Maybe::Some(x) && y < 20 { 1 } else { 2 }
+            } else if gate && let Maybe::Some(x) = value && x < 5 {
+                3
+            } else {
+                4
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_else_closure_false_postcondition ["vstd", "--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test(gate: bool, value: Maybe) -> (r: u32)
+            ensures r == 4, // FAILS
+        {
+            if gate && let Maybe::Some(x) = value && x == 0 {
+                4
+            } else {
+                let x = 3u32;
+                let c = |z: u32| -> (result: u32)
+                    requires z < 10,
+                    ensures result == x + z,
+                { x + z };
+                c(0)
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_diverging_condition ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test(gate: bool) -> (r: u32)
+            ensures r == if gate { 1u32 } else { 2u32 },
+        {
+            if gate && let Maybe::Some(x) = {
+                if gate { return 1; }
+                Maybe::None
+            } && x > 0 {
+                3
+            } else {
+                2
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] let_chain_in_contract ["--edition 2024"] => verus_code! {
+        enum Maybe { Some(u32), None }
+
+        fn test(value: Maybe) -> (r: u32)
+            requires if let Maybe::Some(x) = value && x > 0 { x < 10 } else { true },
+            ensures
+                if let Maybe::Some(x) = value && x > 0 { r == x } else { r == 0 },
+                r < 10,
+        {
+            if let Maybe::Some(x) = value && x > 0 { x } else { 0 }
         }
     } => Ok(())
 }

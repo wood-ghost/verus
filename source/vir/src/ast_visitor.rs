@@ -571,6 +571,12 @@ pub(crate) trait AstVisitor<R: Returner, Err, Scope: Scoper> {
                     expr_new(ExprX::Match(R::get(place), R::get_vec_a(arms), *assert_irrefutable))
                 })
             }
+            ExprX::LetChain { body, els } => {
+                let body = self.visit_expr(body)?;
+                let els = self.visit_expr(els)?;
+                R::ret(|| expr_new(ExprX::LetChain { body: R::get(body), els: R::get(els) }))
+            }
+            ExprX::LetChainElse => R::ret(|| expr_new(ExprX::LetChainElse)),
             ExprX::Loop {
                 loop_isolation,
                 allow_complex_invariants,
