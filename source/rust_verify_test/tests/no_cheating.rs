@@ -73,8 +73,8 @@ test_verify_one_file_with_options! {
 test_verify_one_file_with_options! {
     #[test] test_no_cheating_assume_spec ["--no-cheating"] => verus_code! {
         use vstd::prelude::*;
-        pub assume_specification<T, U> [Option::<(T, U)>::unzip](a: Option<(T, U)>) // FAILS
-            -> (r: (Option<T>, Option<U>))
+        pub assume_specification [std::process::id]() // FAILS
+            -> (r: u32)
             ensures false
         ;
     } => Err(e) => assert_one_fails(e)
